@@ -1,32 +1,61 @@
-# Prerequisites
-*.d
+# Operating system
+.DS_Store
+Thumbs.db
 
-# Compiled Object files
-*.slo
-*.lo
-*.o
-*.obj
+# Logs and temporary files
+*.log
+*.tmp
+*.out
 
-# Precompiled Headers
-*.gch
-*.pch
-
-# Compiled Dynamic libraries
+# Build directories and binaries
+/build/
+/bin/
+*.exe
+*.dll
 *.so
 *.dylib
-*.dll
 
-# Fortran module files
-*.mod
-*.smod
+# Go Modules
+/go.sum
+/go.mod
 
-# Compiled Static libraries
-*.lai
-*.la
+# Go compiled object files and cache
 *.a
-*.lib
+*.o
+/pkg/
+**/vendor/
 
-# Executables
-*.exe
-*.out
-*.app
+# Test and debug files
+*.test
+*.prof
+*.cover
+/coverage/
+
+# IDE/Editor configurations
+.vscode/
+.idea/
+*.sublime-workspace
+
+# Blockchain data
+/blockchain_data/
+/blockchain_logs/
+*.db
+*.ldb
+*.sqlite
+peers.json
+
+# Secret keys and environment files
+*.key
+*.pem
+*.env
+
+# Smart Contract files
+/build/
+/artifacts/
+
+# Layer development builds
+/layer2_build/
+/layer3_build/
+
+# Git-related files
+.gitignore
