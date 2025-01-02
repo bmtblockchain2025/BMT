@@ -1,4 +1,4 @@
-v1.0
+
 # BMT-Blockchain Project Structure
 
 ## Directory Structure
