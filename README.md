@@ -73,7 +73,7 @@ BMT is a next-generation blockchain platform designed to address the challenges 
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/your-username/BMT-Blockchain.git
+   git clone [https://github.com/your-username/BMT-Blockchain.git](https://github.com/bmtblockchain2025/BMT)
    ```
 2. Install dependencies:
    ```bash
@@ -107,5 +107,5 @@ This project is licensed under the MIT License. See the `LICENSE` file for detai
 
 For questions or collaboration opportunities, reach out to us:
 
-- **GitHub:** [BMT-Blockchain](https://github.com/your-username/BMT-Blockchain)
+- **GitHub:** https://github.com/bmtblockchain2025/BMT
 
