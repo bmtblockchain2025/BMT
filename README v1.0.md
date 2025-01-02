@@ -116,25 +116,34 @@ Blockchain is not just a financial technology but also a platform for innovative
 
 ## Getting Started
 
+### Prerequisites
+- Install Go (1.22 or later): [Download Go](https://golang.org/dl/)
+
+### Steps to Run the Blockchain
 1. Clone the repository:
    ```bash
    git clone https://github.com/bmtblockchain2025/BMT.git
-   ```
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Start the local blockchain:
-   ```bash
-   npm start
-   ```
+   cd BMT
+2.Build the project:
+bash
+go build
 
----
+3.Run the blockchain node:
+bash
+./BMT
 
-## Contact
+Start interacting with the blockchain: Use the integrated CLI to create wallets, send transactions, and more.
+Build the project:
 
-- **GitHub:** [https://github.com/bmtblockchain2025/BMT](https://github.com/bmtblockchain2025/BMT)
-- **X Page:** [https://x.com/BChain95590](https://x.com/BChain95590)
+bash
+Sao chép mã
+go build
+Run the blockchain node:
 
----
+bash
+Sao chép mã
+./BMT
+Start interacting with the blockchain: Use the integrated CLI to create wallets, send transactions, and more.
+
+
 
