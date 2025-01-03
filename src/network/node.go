@@ -2,6 +2,7 @@ package network
 
 import (
 	"BMT-Blockchain/src/blockchain"
+	"BMT-Blockchain/src/governance"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -10,11 +11,11 @@ import (
 
 // Node represents a single node in the P2P network.
 type Node struct {
-	ID       string                // Unique ID for the node
-	Address  string                // Network address (e.g., "127.0.0.1:8080")
-	Peers    map[string]*Peer      // List of connected peers
+	ID         string                // Unique ID for the node
+	Address    string                // Network address (e.g., "127.0.0.1:8080")
+	Peers      map[string]*Peer      // List of connected peers
 	Blockchain *blockchain.Blockchain // Blockchain managed by this node
-	mutex    sync.Mutex            // Mutex for thread safety
+	mutex      sync.Mutex            // Mutex for thread safety
 }
 
 // Peer represents a connected peer in the network.
@@ -77,6 +78,8 @@ func (node *Node) handleConnection(conn net.Conn) {
 		node.handleNewBlock(message)
 	case "sync_request":
 		node.handleSyncRequest(conn)
+	case "vote_proposal":
+		node.handleVoteProposal(message)
 	default:
 		fmt.Printf("Unknown message type: %s\n", messageType)
 	}
@@ -119,6 +122,27 @@ func (node *Node) handleSyncRequest(conn net.Conn) {
 	}
 }
 
+// handleVoteProposal processes an incoming voting proposal.
+func (node *Node) handleVoteProposal(message map[string]interface{}) {
+	proposalData, err := json.Marshal(message["proposal"])
+	if err != nil {
+		fmt.Printf("Error parsing proposal: %v\n", err)
+		return
+	}
+
+	var proposal governance.Proposal
+	if err := json.Unmarshal(proposalData, &proposal); err != nil {
+		fmt.Printf("Error unmarshalling proposal: %v\n", err)
+		return
+	}
+
+	// Node votes on the proposal (simulate logic here)
+	vote := true // Example: Node always votes "yes"
+	proposal.Vote(node.ID, vote)
+
+	fmt.Printf("Node %s voted %v on proposal %s.\n", node.ID, vote, proposal.ID)
+}
+
 // Connect adds a peer to the node's list of connected peers.
 func (node *Node) Connect(peerID, peerAddress string) {
 	node.mutex.Lock()
@@ -130,5 +154,31 @@ func (node *Node) Connect(peerID, peerAddress string) {
 			Address: peerAddress,
 		}
 		fmt.Printf("Node %s connected to peer %s at %s\n", node.ID, peerID, peerAddress)
+	}
+}
+
+// ProposeVote sends a proposal to all peers for voting.
+func (node *Node) ProposeVote(proposal *governance.Proposal) {
+	for _, peer := range node.Peers {
+		go func(peer *Peer) {
+			conn, err := net.Dial("tcp", peer.Address)
+			if err != nil {
+				fmt.Printf("Error connecting to peer %s: %v\n", peer.ID, err)
+				return
+			}
+			defer conn.Close()
+
+			message := map[string]interface{}{
+				"type":     "vote_proposal",
+				"proposal": proposal,
+			}
+
+			encoder := json.NewEncoder(conn)
+			if err := encoder.Encode(message); err != nil {
+				fmt.Printf("Error sending proposal to peer %s: %v\n", peer.ID, err)
+			} else {
+				fmt.Printf("Proposal sent to peer %s.\n", peer.ID)
+			}
+		}(peer)
 	}
 }
