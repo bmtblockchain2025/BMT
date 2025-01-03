@@ -58,7 +58,6 @@ func (node *Node) Start() {
 func (node *Node) handleConnection(conn net.Conn) {
 	defer conn.Close()
 
-	// Read incoming data
 	decoder := json.NewDecoder(conn)
 	var message map[string]interface{}
 	if err := decoder.Decode(&message); err != nil {
@@ -66,7 +65,6 @@ func (node *Node) handleConnection(conn net.Conn) {
 		return
 	}
 
-	// Handle different message types
 	messageType, ok := message["type"].(string)
 	if !ok {
 		fmt.Println("Invalid message format")
@@ -102,7 +100,6 @@ func (node *Node) handleNewBlock(message map[string]interface{}) {
 	node.mutex.Lock()
 	defer node.mutex.Unlock()
 
-	// Validate and add the new block
 	if node.Blockchain.GetLatestBlock().Hash == newBlock.PreviousHash {
 		node.Blockchain.Chain = append(node.Blockchain.Chain, &newBlock)
 		fmt.Printf("Block added to node %s: %+v\n", node.ID, newBlock)
@@ -136,7 +133,6 @@ func (node *Node) handleVoteProposal(message map[string]interface{}) {
 		return
 	}
 
-	// Node votes on the proposal (simulate logic here)
 	vote := true // Example: Node always votes "yes"
 	proposal.Vote(node.ID, vote)
 
@@ -180,5 +176,21 @@ func (node *Node) ProposeVote(proposal *governance.Proposal) {
 				fmt.Printf("Proposal sent to peer %s.\n", peer.ID)
 			}
 		}(peer)
+	}
+}
+
+// SyncBlockchain synchronizes the blockchain with a peer.
+func (node *Node) SyncBlockchain(peerAddress string, synchronizer *Synchronizer) {
+	newBlockchain, err := synchronizer.RequestBlockchain(peerAddress)
+	if err != nil {
+		fmt.Printf("Error syncing blockchain with peer %s: %v\n", peerAddress, err)
+		return
+	}
+
+	err = synchronizer.UpdateBlockchain(node, newBlockchain)
+	if err != nil {
+		fmt.Printf("Error updating blockchain: %v\n", err)
+	} else {
+		fmt.Printf("Node %s successfully synced blockchain from peer %s.\n", node.ID, peerAddress)
 	}
 }
