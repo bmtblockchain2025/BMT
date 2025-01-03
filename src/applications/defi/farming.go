@@ -8,24 +8,24 @@ import (
 
 // FarmingPool represents a pool for yield farming.
 type FarmingPool struct {
-	TotalStaked   int64              // Total amount staked in the pool
-	RewardRate    float64            // Reward rate per second (e.g., 0.01 BMT/s)
-	Stakes        map[string]int64   // User stakes
-	StakeTimes    map[string]int64   // Timestamps when users staked
-	mutex         sync.Mutex         // Mutex for thread safety
+	TotalStaked   float64           // Total amount staked in the pool
+	RewardRate    float64           // Reward rate per second (e.g., 0.01 BMT/s)
+	Stakes        map[string]float64 // User stakes
+	StakeTimes    map[string]int64  // Timestamps when users staked
+	mutex         sync.Mutex        // Mutex for thread safety
 }
 
 // NewFarmingPool creates a new farming pool with a specified reward rate.
 func NewFarmingPool(rewardRate float64) *FarmingPool {
 	return &FarmingPool{
 		RewardRate: rewardRate,
-		Stakes:     make(map[string]int64),
+		Stakes:     make(map[string]float64),
 		StakeTimes: make(map[string]int64),
 	}
 }
 
 // Stake allows a user to stake tokens into the farming pool.
-func (fp *FarmingPool) Stake(user string, amount int64) error {
+func (fp *FarmingPool) Stake(user string, amount float64) error {
 	fp.mutex.Lock()
 	defer fp.mutex.Unlock()
 
@@ -46,7 +46,7 @@ func (fp *FarmingPool) Stake(user string, amount int64) error {
 }
 
 // Unstake allows a user to withdraw staked tokens from the pool.
-func (fp *FarmingPool) Unstake(user string, amount int64) (int64, error) {
+func (fp *FarmingPool) Unstake(user string, amount float64) (float64, error) {
 	fp.mutex.Lock()
 	defer fp.mutex.Unlock()
 
@@ -69,7 +69,7 @@ func (fp *FarmingPool) Unstake(user string, amount int64) (int64, error) {
 }
 
 // ClaimRewards allows a user to claim their pending rewards.
-func (fp *FarmingPool) ClaimRewards(user string) (int64, error) {
+func (fp *FarmingPool) ClaimRewards(user string) (float64, error) {
 	fp.mutex.Lock()
 	defer fp.mutex.Unlock()
 
@@ -83,14 +83,14 @@ func (fp *FarmingPool) ClaimRewards(user string) (int64, error) {
 }
 
 // calculateRewards calculates the rewards for a user based on staking duration.
-func (fp *FarmingPool) calculateRewards(user string) int64 {
+func (fp *FarmingPool) calculateRewards(user string) float64 {
 	stakeTime := fp.StakeTimes[user]
 	duration := time.Now().Unix() - stakeTime
-	return int64(float64(fp.Stakes[user]) * float64(duration) * fp.RewardRate)
+	return float64(fp.Stakes[user]) * float64(duration) * fp.RewardRate
 }
 
 // GetUserStake retrieves the user's staked amount.
-func (fp *FarmingPool) GetUserStake(user string) int64 {
+func (fp *FarmingPool) GetUserStake(user string) float64 {
 	fp.mutex.Lock()
 	defer fp.mutex.Unlock()
 	return fp.Stakes[user]

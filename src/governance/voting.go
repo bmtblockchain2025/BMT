@@ -7,11 +7,11 @@ import (
 
 // Proposal represents a proposal submitted for voting.
 type Proposal struct {
-	ID          string   // Unique identifier for the proposal
-	Description string   // Description of the proposal
-	Votes       map[string]bool // Votes from nodes (true for yes, false for no)
-	Threshold   float64  // Percentage of "yes" votes required to pass
-	mutex       sync.Mutex // Mutex for thread safety
+	ID          string            // Unique identifier for the proposal
+	Description string            // Description of the proposal
+	Votes       map[string]bool   // Votes from nodes (true for yes, false for no)
+	Threshold   float64           // Percentage of "yes" votes required to pass
+	mutex       sync.Mutex        // Mutex for thread safety
 }
 
 // NewProposal creates a new proposal.

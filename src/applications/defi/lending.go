@@ -7,26 +7,26 @@ import (
 
 // LendingPool represents a pool for lending and borrowing assets.
 type LendingPool struct {
-	TotalSupply int64              // Total supply of assets in the pool
-	TotalBorrowed int64            // Total amount borrowed
-	InterestRate float64           // Annual interest rate
-	Balances     map[string]int64  // User balances (deposited assets)
-	Borrowed     map[string]int64  // User borrow amounts
-	mutex        sync.Mutex        // Mutex for thread safety
+	TotalSupply  float64            // Total supply of assets in the pool
+	TotalBorrowed float64           // Total amount borrowed
+	InterestRate  float64           // Annual interest rate
+	Balances      map[string]float64 // User balances (deposited assets)
+	Borrowed      map[string]float64 // User borrow amounts
+	mutex         sync.Mutex        // Mutex for thread safety
 }
 
 // NewLendingPool creates a new lending pool with initial supply and interest rate.
-func NewLendingPool(initialSupply int64, interestRate float64) *LendingPool {
+func NewLendingPool(initialSupply float64, interestRate float64) *LendingPool {
 	return &LendingPool{
 		TotalSupply:  initialSupply,
 		InterestRate: interestRate,
-		Balances:     make(map[string]int64),
-		Borrowed:     make(map[string]int64),
+		Balances:     make(map[string]float64),
+		Borrowed:     make(map[string]float64),
 	}
 }
 
 // Deposit adds assets to the pool and updates the user's balance.
-func (lp *LendingPool) Deposit(user string, amount int64) error {
+func (lp *LendingPool) Deposit(user string, amount float64) error {
 	lp.mutex.Lock()
 	defer lp.mutex.Unlock()
 
@@ -40,7 +40,7 @@ func (lp *LendingPool) Deposit(user string, amount int64) error {
 }
 
 // Borrow allows a user to borrow assets from the pool if sufficient collateral exists.
-func (lp *LendingPool) Borrow(user string, amount int64) error {
+func (lp *LendingPool) Borrow(user string, amount float64) error {
 	lp.mutex.Lock()
 	defer lp.mutex.Unlock()
 
@@ -64,7 +64,7 @@ func (lp *LendingPool) Borrow(user string, amount int64) error {
 }
 
 // Repay allows a user to repay borrowed assets.
-func (lp *LendingPool) Repay(user string, amount int64) error {
+func (lp *LendingPool) Repay(user string, amount float64) error {
 	lp.mutex.Lock()
 	defer lp.mutex.Unlock()
 
@@ -82,14 +82,14 @@ func (lp *LendingPool) Repay(user string, amount int64) error {
 }
 
 // GetUserBalance retrieves the user's deposited balance.
-func (lp *LendingPool) GetUserBalance(user string) int64 {
+func (lp *LendingPool) GetUserBalance(user string) float64 {
 	lp.mutex.Lock()
 	defer lp.mutex.Unlock()
 	return lp.Balances[user]
 }
 
 // GetUserBorrowed retrieves the user's borrowed amount.
-func (lp *LendingPool) GetUserBorrowed(user string) int64 {
+func (lp *LendingPool) GetUserBorrowed(user string) float64 {
 	lp.mutex.Lock()
 	defer lp.mutex.Unlock()
 	return lp.Borrowed[user]

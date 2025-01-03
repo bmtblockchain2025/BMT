@@ -7,10 +7,10 @@ import (
 
 // Stablecoin represents a stablecoin management system.
 type Stablecoin struct {
-	TotalSupply int64            // Total supply of the stablecoin
+	TotalSupply float64          // Total supply of the stablecoin
 	Reserves    float64          // Total reserves backing the stablecoin
 	PegRate     float64          // Peg rate (e.g., 1 stablecoin = 1 USD)
-	Balances    map[string]int64 // User balances
+	Balances    map[string]float64 // User balances
 	mutex       sync.Mutex       // Mutex for thread safety
 }
 
@@ -19,7 +19,7 @@ func NewStablecoin(initialReserves float64, pegRate float64) *Stablecoin {
 	return &Stablecoin{
 		Reserves: initialReserves,
 		PegRate:  pegRate,
-		Balances: make(map[string]int64),
+		Balances: make(map[string]float64),
 	}
 }
 
@@ -36,14 +36,14 @@ func (sc *Stablecoin) Mint(user string, amount float64) error {
 	}
 
 	sc.Reserves -= amount
-	mintedStablecoins := int64(amount / sc.PegRate)
+	mintedStablecoins := amount / sc.PegRate
 	sc.TotalSupply += mintedStablecoins
 	sc.Balances[user] += mintedStablecoins
 	return nil
 }
 
 // Burn allows users to burn stablecoins and reclaim reserves.
-func (sc *Stablecoin) Burn(user string, amount int64) (float64, error) {
+func (sc *Stablecoin) Burn(user string, amount float64) (float64, error) {
 	sc.mutex.Lock()
 	defer sc.mutex.Unlock()
 
@@ -54,7 +54,7 @@ func (sc *Stablecoin) Burn(user string, amount int64) (float64, error) {
 		return 0, errors.New("burn amount exceeds user balance")
 	}
 
-	reclaimedReserves := float64(amount) * sc.PegRate
+	reclaimedReserves := amount * sc.PegRate
 	sc.Reserves += reclaimedReserves
 	sc.TotalSupply -= amount
 	sc.Balances[user] -= amount
@@ -62,14 +62,14 @@ func (sc *Stablecoin) Burn(user string, amount int64) (float64, error) {
 }
 
 // GetBalance retrieves the balance of a user.
-func (sc *Stablecoin) GetBalance(user string) int64 {
+func (sc *Stablecoin) GetBalance(user string) float64 {
 	sc.mutex.Lock()
 	defer sc.mutex.Unlock()
 	return sc.Balances[user]
 }
 
 // GetTotalSupply retrieves the total supply of the stablecoin.
-func (sc *Stablecoin) GetTotalSupply() int64 {
+func (sc *Stablecoin) GetTotalSupply() float64 {
 	sc.mutex.Lock()
 	defer sc.mutex.Unlock()
 	return sc.TotalSupply

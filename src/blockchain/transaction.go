@@ -4,13 +4,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"strconv"
 )
 
 // Transaction represents a single transaction in the blockchain.
 type Transaction struct {
 	Sender    string  // Address of the sender
 	Receiver  string  // Address of the receiver
-	Amount    float64 // Amount being transferred
+	Amount    float64 // Amount being transferred (supports up to 0.0000001 BMT)
 	Timestamp int64   // Unix timestamp of the transaction
 	Hash      string  // Hash of the transaction
 }
@@ -23,6 +24,9 @@ func NewTransaction(sender, receiver string, amount float64, timestamp int64) (*
 	}
 	if amount <= 0 {
 		return nil, errors.New("transaction amount must be positive")
+	}
+	if amount < 0.0000001 {
+		return nil, errors.New("transaction amount must be at least 0.0000001 BMT")
 	}
 
 	// Create the transaction
@@ -41,7 +45,7 @@ func NewTransaction(sender, receiver string, amount float64, timestamp int64) (*
 
 // CalculateHash generates a hash for the transaction.
 func (t *Transaction) CalculateHash() string {
-	record := t.Sender + t.Receiver + string(t.Timestamp) + string(t.Amount)
+	record := t.Sender + t.Receiver + strconv.FormatInt(t.Timestamp, 10) + strconv.FormatFloat(t.Amount, 'f', 7, 64)
 	hash := sha256.Sum256([]byte(record))
 	return hex.EncodeToString(hash[:])
 }

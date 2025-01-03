@@ -38,8 +38,8 @@ func (api *API) LockTokensHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var request struct {
-		Address string `json:"address"`
-		Amount  int64  `json:"amount"`
+		Address string  `json:"address"`
+		Amount  float64 `json:"amount"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
@@ -64,8 +64,8 @@ func (api *API) MintTokensHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var request struct {
-		Address string `json:"address"`
-		Amount  int64  `json:"amount"`
+		Address string  `json:"address"`
+		Amount  float64 `json:"amount"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
@@ -90,8 +90,8 @@ func (api *API) UnlockTokensHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var request struct {
-		Address string `json:"address"`
-		Amount  int64  `json:"amount"`
+		Address string  `json:"address"`
+		Amount  float64 `json:"amount"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
@@ -123,7 +123,7 @@ func (api *API) VerifyTransactionHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	valid, err := api.Oracle.ValidateTransactionOnChain(txID, blockchain)
+	valid, err := api.Oracle.ValidateTransaction(txID)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Error: %v", err), http.StatusInternalServerError)
 		return

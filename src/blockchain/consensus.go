@@ -17,8 +17,8 @@ func NewVotingConsensus(threshold float64) *VotingConsensus {
 
 // Vote represents a vote from a node.
 type Vote struct {
-	NodeID string // Unique ID of the node
-	Approve bool  // Whether the node approves the block
+	NodeID  string // Unique ID of the node
+	Approve bool   // Whether the node approves the block
 }
 
 // ProposeBlock allows a node to propose a block for voting.

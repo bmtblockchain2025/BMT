@@ -7,8 +7,8 @@ import (
 
 // Listing represents an NFT listed for sale in the marketplace.
 type Listing struct {
-	NFTID string  // NFT ID being sold
-	Seller string // Owner of the NFT
+	NFTID  string  // NFT ID being sold
+	Seller string  // Owner of the NFT
 	Price  float64 // Price in BMT
 }
 

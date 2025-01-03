@@ -15,6 +15,7 @@ type Wallet struct {
 	PrivateKey *ecdsa.PrivateKey
 	PublicKey  string
 	Address    string
+	Balance    float64 // Balance in BMT
 }
 
 // NewWallet creates a new wallet with a unique key pair.
@@ -31,6 +32,7 @@ func NewWallet() (*Wallet, error) {
 		PrivateKey: privateKey,
 		PublicKey:  hex.EncodeToString(publicKey),
 		Address:    address,
+		Balance:    0.0,
 	}, nil
 }
 
@@ -76,4 +78,9 @@ func VerifySignature(publicKey, signature, transactionHash string) (bool, error)
 	hash := sha256.Sum256([]byte(transactionHash))
 	isValid := ecdsa.Verify(&ecdsa.PublicKey{Curve: elliptic.P256(), X: x, Y: y}, hash[:], r, s)
 	return isValid, nil
+}
+
+// UpdateBalance updates the wallet's balance by a specified amount.
+func (w *Wallet) UpdateBalance(amount float64) {
+	w.Balance += amount
 }

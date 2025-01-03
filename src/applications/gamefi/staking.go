@@ -8,16 +8,16 @@ import (
 
 // StakedNFT represents an NFT that has been staked.
 type StakedNFT struct {
-	NFTID      string // ID of the staked NFT
-	Owner      string // Owner of the NFT
-	StakeTime  int64  // Timestamp when the NFT was staked
+	NFTID      string  // ID of the staked NFT
+	Owner      string  // Owner of the NFT
+	StakeTime  int64   // Timestamp when the NFT was staked
 	RewardRate float64 // Reward rate for staking (e.g., 10 BMT/day)
 }
 
 // NFTStakingPool manages staking and rewards for NFTs.
 type NFTStakingPool struct {
 	StakedNFTs map[string]*StakedNFT // Mapping from NFT ID to StakedNFT
-	mutex      sync.Mutex           // Mutex for thread safety
+	mutex      sync.Mutex            // Mutex for thread safety
 }
 
 // NewNFTStakingPool initializes a new NFT staking pool.

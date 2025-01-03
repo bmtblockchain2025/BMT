@@ -8,8 +8,8 @@ import (
 
 // OracleSystem fetches and validates external blockchain data.
 type OracleSystem struct {
-	Data map[string]string // Mapping of transaction IDs to validation results
-	mutex sync.Mutex       // Mutex for thread safety
+	Data  map[string]string // Mapping of transaction IDs to validation results
+	mutex sync.Mutex        // Mutex for thread safety
 }
 
 // NewOracleSystem initializes a new Oracle system.
@@ -49,4 +49,3 @@ func (oracle *OracleSystem) ValidateTransaction(txID string) (bool, error) {
 	}
 	return false, errors.New("transaction validation failed")
 }
-

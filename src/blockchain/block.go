@@ -3,6 +3,7 @@ package blockchain
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"strconv"
 	"time"
 )
 
@@ -18,7 +19,7 @@ type Block struct {
 
 // CalculateHash generates a SHA-256 hash for the block.
 func (b *Block) CalculateHash() string {
-	record := string(b.Index) + b.Timestamp.String() + b.PreviousHash + concatTransactions(b.Transactions) + string(b.Nonce)
+	record := strconv.Itoa(b.Index) + b.Timestamp.String() + b.PreviousHash + concatTransactions(b.Transactions) + strconv.Itoa(b.Nonce)
 	hash := sha256.Sum256([]byte(record))
 	return hex.EncodeToString(hash[:])
 }

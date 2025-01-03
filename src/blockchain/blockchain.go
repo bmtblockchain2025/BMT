@@ -11,10 +11,10 @@ type Blockchain struct {
 // NewBlockchain initializes a new blockchain with tokenomics.
 func NewBlockchain() *Blockchain {
 	genesisBlock := NewBlock(0, []string{"Genesis Block"}, "0")
-	tokenomics := NewTokenomics(8_000_000_000, 10_000_000_000) // Total: 8B, Max: 10B
+	tokenomics := NewTokenomics(8_000_000_000.0, 8_000_000_000.0) 
 
 	// Assign initial supply to the system wallet
-	tokenomics.Balances["system"] = 8_000_000_000
+	tokenomics.Balances["system"] = 8_000_000_000.0
 
 	return &Blockchain{
 		Chain:      []*Block{genesisBlock},
@@ -50,18 +50,23 @@ func (bc *Blockchain) AddTransactionBlock(transactions []*Transaction) error {
 }
 
 // AddTransactionWithTokenomics adds a transaction to the blockchain and updates balances.
-func (bc *Blockchain) AddTransactionWithTokenomics(from, to string, amount int64) error {
+func (bc *Blockchain) AddTransactionWithTokenomics(from, to string, amount float64) error {
 	err := bc.Tokenomics.Transfer(from, to, amount)
 	if err != nil {
 		return err
 	}
 
-	transaction := []string{from + " -> " + to + ": " + string(amount) + " BMT"}
+	transaction := []string{from + " -> " + to + ": " + formatAmount(amount) + " BMT"}
 	lastBlock := bc.Chain[len(bc.Chain)-1]
 	newBlock := NewBlock(lastBlock.Index+1, transaction, lastBlock.Hash)
 	bc.Chain = append(bc.Chain, newBlock)
 
 	return nil
+}
+
+// formatAmount formats the float amount with 7 decimal places.
+func formatAmount(amount float64) string {
+	return fmt.Sprintf("%.7f", amount)
 }
 
 // IsValid checks if the blockchain is valid by verifying all blocks.

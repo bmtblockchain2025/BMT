@@ -8,19 +8,19 @@ import (
 
 // CrossChainBridge manages cross-chain transactions.
 type CrossChainBridge struct {
-	LockedTokens map[string]int64 // Mapping of addresses to locked token amounts
-	mutex        sync.Mutex       // Mutex for thread safety
+	LockedTokens map[string]float64 // Mapping of addresses to locked token amounts
+	mutex        sync.Mutex         // Mutex for thread safety
 }
 
 // NewCrossChainBridge initializes a new cross-chain bridge.
 func NewCrossChainBridge() *CrossChainBridge {
 	return &CrossChainBridge{
-		LockedTokens: make(map[string]int64),
+		LockedTokens: make(map[string]float64),
 	}
 }
 
 // LockTokens locks tokens on the source chain.
-func (bridge *CrossChainBridge) LockTokens(address string, amount int64) error {
+func (bridge *CrossChainBridge) LockTokens(address string, amount float64) error {
 	bridge.mutex.Lock()
 	defer bridge.mutex.Unlock()
 
@@ -29,12 +29,12 @@ func (bridge *CrossChainBridge) LockTokens(address string, amount int64) error {
 	}
 
 	bridge.LockedTokens[address] += amount
-	fmt.Printf("Locked %d tokens for %s\n", amount, address)
+	fmt.Printf("Locked %.7f tokens for %s\n", amount, address)
 	return nil
 }
 
 // MintTokens mints tokens on the destination chain.
-func (bridge *CrossChainBridge) MintTokens(address string, amount int64) error {
+func (bridge *CrossChainBridge) MintTokens(address string, amount float64) error {
 	bridge.mutex.Lock()
 	defer bridge.mutex.Unlock()
 
@@ -43,7 +43,7 @@ func (bridge *CrossChainBridge) MintTokens(address string, amount int64) error {
 	}
 
 	// Simulate minting tokens (can be integrated with smart contracts on other chains)
-	fmt.Printf("Minted %d tokens for %s on the destination chain\n", amount, address)
+	fmt.Printf("Minted %.7f tokens for %s on the destination chain\n", amount, address)
 	return nil
 }
 
@@ -58,7 +58,7 @@ func (bridge *CrossChainBridge) VerifyCrossChainTransaction(txID string) (bool, 
 }
 
 // UnlockTokens unlocks tokens on the source chain after verification.
-func (bridge *CrossChainBridge) UnlockTokens(address string, amount int64) error {
+func (bridge *CrossChainBridge) UnlockTokens(address string, amount float64) error {
 	bridge.mutex.Lock()
 	defer bridge.mutex.Unlock()
 
@@ -67,7 +67,7 @@ func (bridge *CrossChainBridge) UnlockTokens(address string, amount int64) error
 	}
 
 	bridge.LockedTokens[address] -= amount
-	fmt.Printf("Unlocked %d tokens for %s\n", amount, address)
+	fmt.Printf("Unlocked %.7f tokens for %s\n", amount, address)
 	return nil
 }
 
