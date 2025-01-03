@@ -1,13 +1,13 @@
-# Operating system
+# Operating System
 .DS_Store
 Thumbs.db
 
-# Logs and temporary files
+# Logs and Temporary Files
 *.log
 *.tmp
 *.out
 
-# Build directories and binaries
+# Build Directories and Binaries
 /build/
 /bin/
 *.exe
@@ -19,24 +19,24 @@ Thumbs.db
 /go.sum
 /go.mod
 
-# Go compiled object files and cache
+# Go Compiled Object Files and Cache
 *.a
 *.o
 /pkg/
 **/vendor/
 
-# Test and debug files
+# Test and Debug Files
 *.test
 *.prof
 *.cover
 /coverage/
 
-# IDE/Editor configurations
+# IDE/Editor Configurations
 .vscode/
 .idea/
 *.sublime-workspace
 
-# Blockchain data
+# Blockchain Data
 /blockchain_data/
 /blockchain_logs/
 *.db
@@ -44,18 +44,27 @@ Thumbs.db
 *.sqlite
 peers.json
 
-# Secret keys and environment files
+# Secret Keys and Environment Files
 *.key
 *.pem
 *.env
 
-# Smart Contract files
+# Smart Contract and Layer Builds
 /build/
 /artifacts/
-
-# Layer development builds
-/layer2_build/
 /layer3_build/
+/layer4_build/
 
-# Git-related files
+# Unnecessary or Temporary Files
+*.bak
+*.old
+*.swp
+*.tmp
+
+# Third-party Libraries or Generated Content
+/node_modules/
+/dist/
+/coverage/
+
+# Git-Related Files
 .gitignore
