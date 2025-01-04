@@ -19,7 +19,7 @@ const (
 	MaxSubBlockSize    = 1 * 1024 * 1024  // 1 MB
 	MaxMiniBlockSize   = 100 * 1024       // 0.1 MB
 	MaxTransactionsPerBlock = 10000       // Example max transactions per block
-	TargetMiningTime   = 2                // Target time (in seconds) for mining a block
+	TargetMiningTime   = 0.01             // Target time (in seconds) for mining
 	MaxMiniBlocks      = 10               // Maximum number of mini-blocks per sub-block
 )
 
@@ -52,6 +52,7 @@ type MiniBlock struct {
 	Hash         string         // Hash of the mini-block
 	CurrentSize  int            // Current size of the mini-block in bytes
 	IsFull       bool           // Indicates whether the mini-block is full
+	Key          string         // Unique key for the mini-block
 }
 
 // SubBlock represents a medium block containing multiple mini-blocks.
@@ -59,6 +60,7 @@ type SubBlock struct {
 	Index      int        // Position of the sub-block
 	MiniBlocks []MiniBlock // Mini-blocks within this sub-block
 	Hash       string     // Unique hash of the sub-block
+	Key        string     // Unique key for the sub-block
 }
 
 // MainBlock represents a large block containing multiple sub-blocks.
@@ -66,42 +68,32 @@ type MainBlock struct {
 	Index     int        // Position of the main block
 	SubBlocks []SubBlock // Sub-blocks within this main block
 	Hash      string     // Unique hash of the main block
+	Key       string     // Unique key for the main block
 }
 
 // Mutex to synchronize mining and consensus operations
 var mutex sync.Mutex
 var previousMiningTime = TargetMiningTime // Initialize with target time
-var processedTransactions sync.Map // Map to track processed transactions using sync.Map for concurrency safety
+var processedTransactions sync.Map        // Map to track processed transactions using sync.Map for concurrency safety
+var availableMiniBlocks []MiniBlock       // List of available mini-blocks (not full)
+var fullMiniBlocks []MiniBlock            // List of full mini-blocks
 
-// ValidateTransactionWithMultipleNodes performs consensus using multiple staking nodes.
-func ValidateTransactionWithMultipleNodes(transactions []Transaction) bool {
+// ValidateTransactionWithFastConsensus performs fast consensus using a small group of validators.
+func ValidateTransactionWithFastConsensus(transactions []Transaction) bool {
 	if len(transactions) == 0 {
 		return false
 	}
-
-	var voteResults sync.Map
-	var wg sync.WaitGroup
-	requiredVotes := 2 * len(TrustedValidators) / 3
-
-	// Simulate parallel voting by validators
-	for validator := range TrustedValidators {
-		wg.Add(1)
-		go func(validator string) {
-			defer wg.Done()
-			if rand.Float64() > 0.5 { // Simulate random vote
-				voteResults.Store(validator, true)
-			}
-		}(validator)
-	}
-	wg.Wait()
-
+	requiredVotes := len(TrustedValidators) / 2 + 1
 	votes := 0
-	voteResults.Range(func(_, _ interface{}) bool {
-		votes++
-		return true
-	})
-
-	return votes >= requiredVotes
+	for validator := range TrustedValidators {
+		if rand.Float64() > 0.5 { // Simulate random vote
+			votes++
+			if votes >= requiredVotes {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // MineTransaction processes transactions and assigns them to a mini-block in a sub-block.
@@ -111,41 +103,43 @@ func MineTransaction(transactions []Transaction, mainBlock *MainBlock) (*MiniBlo
 		return nil, errors.New("transaction already processed")
 	}
 
-	suffix := calculateDynamicDifficulty()
-	for _, subBlock := range mainBlock.SubBlocks {
-		for i, miniBlock := range subBlock.MiniBlocks {
-			if miniBlock.IsFull {
-				continue // Skip full mini-blocks
-			}
-			// Check if the mini-block has enough space
-			totalTransactionSize := calculateTransactionsSize(transactions)
-			if miniBlock.CurrentSize+totalTransactionSize <= MaxMiniBlockSize {
-				mutex.Lock()
-				mainBlock.SubBlocks[subBlock.Index].MiniBlocks[i].Transactions = append(miniBlock.Transactions, transactions...)
-				mainBlock.SubBlocks[subBlock.Index].MiniBlocks[i].CurrentSize += totalTransactionSize
-				if mainBlock.SubBlocks[subBlock.Index].MiniBlocks[i].CurrentSize == MaxMiniBlockSize {
-					mainBlock.SubBlocks[subBlock.Index].MiniBlocks[i].IsFull = true
-				}
-				mutex.Unlock()
+	mutex.Lock()
+	if len(availableMiniBlocks) == 0 {
+		mutex.Unlock()
+		return nil, errors.New("no available mini-block to record transaction")
+	}
 
-				for {
-					mainBlock.SubBlocks[subBlock.Index].MiniBlocks[i].Hash = calculateMiniBlockHash(miniBlock.Index, miniBlock.Transactions)
-					if isValidHash(mainBlock.SubBlocks[subBlock.Index].MiniBlocks[i].Hash, suffix) {
-						break
-					}
-				}
-				mainBlock.SubBlocks[subBlock.Index].Hash = calculateSubBlockHash(subBlock)
-				mainBlock.Hash = calculateMainBlockHash(mainBlock)
-				return &mainBlock.SubBlocks[subBlock.Index].MiniBlocks[i], nil
-			}
+	// Randomly select an available mini-block
+	selectedIndex := rand.Intn(len(availableMiniBlocks))
+	miniBlock := &availableMiniBlocks[selectedIndex]
+	totalTransactionSize := calculateTransactionsSize(transactions)
+	if miniBlock.CurrentSize+totalTransactionSize > MaxMiniBlockSize {
+		mutex.Unlock()
+		return nil, errors.New("mini-block size exceeded")
+	}
+
+	miniBlock.Transactions = append(miniBlock.Transactions, transactions...)
+	miniBlock.CurrentSize += totalTransactionSize
+	if miniBlock.CurrentSize == MaxMiniBlockSize {
+		miniBlock.IsFull = true
+		fullMiniBlocks = append(fullMiniBlocks, *miniBlock)
+		availableMiniBlocks = append(availableMiniBlocks[:selectedIndex], availableMiniBlocks[selectedIndex+1:]...)
+	}
+	mutex.Unlock()
+
+	suffix := calculateDynamicDifficulty()
+	for {
+		miniBlock.Hash = calculateMiniBlockHash(miniBlock.Index, miniBlock.Transactions)
+		if isValidHash(miniBlock.Hash, suffix) {
+			break
 		}
 	}
-	return nil, errors.New("no available mini-block to record transaction")
+	return miniBlock, nil
 }
 
 // NewTransaction handles the full lifecycle of a transaction.
 func NewTransaction(transactions []Transaction, mainBlock *MainBlock) error {
-	if !ValidateTransactionWithMultipleNodes(transactions) {
+	if !ValidateTransactionWithFastConsensus(transactions) {
 		return errors.New("transaction validation failed")
 	}
 
@@ -156,55 +150,29 @@ func NewTransaction(transactions []Transaction, mainBlock *MainBlock) error {
 	return nil
 }
 
-// ProcessTransactionsConcurrently processes transactions concurrently using Goroutines.
-func ProcessTransactionsConcurrently(transactions []Transaction, mainBlock *MainBlock, numWorkers int) {
+// ProcessTransactionsConcurrently processes transactions concurrently using unlimited Goroutines.
+func ProcessTransactionsConcurrently(transactions []Transaction, mainBlock *MainBlock) {
 	var wg sync.WaitGroup
 	transactionChannel := make(chan Transaction, len(transactions))
-	startTime := time.Now() // Start measuring time
 
 	for _, tx := range transactions {
 		transactionChannel <- tx
 	}
 	close(transactionChannel)
 
-	for i := 0; i < numWorkers; i++ {
+	for tx := range transactionChannel {
 		wg.Add(1)
-		go func() {
+		go func(tx Transaction) {
 			defer wg.Done()
-			for tx := range transactionChannel {
-				_ = NewTransaction([]Transaction{tx}, mainBlock)
-			}
-		}()
+			_ = NewTransaction([]Transaction{tx}, mainBlock)
+		}(tx)
 	}
 	wg.Wait()
-
-	duration := time.Since(startTime) // Calculate elapsed time
-	fmt.Printf("Processed %d transactions in %v\n", len(transactions), duration)
 }
 
 // calculateMiniBlockHash generates the hash for a mini-block.
 func calculateMiniBlockHash(index int, transactions []Transaction) string {
 	record := strconv.Itoa(index) + concatTransactions(transactions)
-	hash := sha256.Sum256([]byte(record))
-	return hex.EncodeToString(hash[:])
-}
-
-// calculateSubBlockHash generates the hash for a sub-block.
-func calculateSubBlockHash(subBlock SubBlock) string {
-	record := strconv.Itoa(subBlock.Index)
-	for _, miniBlock := range subBlock.MiniBlocks {
-		record += miniBlock.Hash
-	}
-	hash := sha256.Sum256([]byte(record))
-	return hex.EncodeToString(hash[:])
-}
-
-// calculateMainBlockHash generates the hash for a main block.
-func calculateMainBlockHash(mainBlock *MainBlock) string {
-	record := strconv.Itoa(mainBlock.Index)
-	for _, subBlock := range mainBlock.SubBlocks {
-		record += subBlock.Hash
-	}
 	hash := sha256.Sum256([]byte(record))
 	return hex.EncodeToString(hash[:])
 }
@@ -220,13 +188,7 @@ func calculateTransactionsSize(transactions []Transaction) int {
 
 // calculateDynamicDifficulty adjusts the difficulty based on the target mining time.
 func calculateDynamicDifficulty() string {
-	targetTime := TargetMiningTime
-	actualTime := previousMiningTime // Simulate actual time taken
-	suffixLength := 2
-	if actualTime > targetTime {
-		suffixLength = 3
-	}
-	return fmt.Sprintf("%0*d", suffixLength, 0)
+	return "00" // Simulate fast mining with fixed difficulty
 }
 
 // concatTransactions concatenates all transactions into a single string.
