@@ -8,14 +8,44 @@ import (
 	"encoding/hex"
 	"errors"
 	"math/big"
+	"sync"
+	"time"
 )
+
+// Contact represents a saved contact in the wallet.
+type Contact struct {
+	Name    string // Name of the contact (limited to 50 characters)
+	Address string // Address of the contact
+}
+
+// TransactionHistory represents a detailed record of a transaction.
+type TransactionHistory struct {
+	Timestamp   time.Time // Time of the transaction
+	To          string    // Recipient address
+	Amount      float64   // Amount transferred
+	Fee         float64   // Transaction fee
+	Status      string    // Status of the transaction (e.g., pending, confirmed)
+	IsAnonymous bool      // Whether the transaction was anonymous
+}
+
+// Guardian represents a trusted entity for social recovery.
+type Guardian struct {
+	Name    string // Name of the guardian
+	Address string // Address of the guardian
+	Approved bool  // Whether the guardian has approved recovery
+}
 
 // Wallet represents a user's wallet containing public and private keys.
 type Wallet struct {
-	PrivateKey *ecdsa.PrivateKey
-	PublicKey  string
-	Address    string
-	Balance    float64 // Balance in BMT
+	PrivateKey    *ecdsa.PrivateKey
+	PublicKey     string
+	Address       string
+	Balance       float64 // Balance in BMT
+	Contacts      []Contact
+	History       []TransactionHistory
+	Guardians     []Guardian
+	TransactionLimit float64
+	mutex         sync.Mutex
 }
 
 // NewWallet creates a new wallet with a unique key pair.
@@ -33,6 +63,10 @@ func NewWallet() (*Wallet, error) {
 		PublicKey:  hex.EncodeToString(publicKey),
 		Address:    address,
 		Balance:    0.0,
+		Contacts:   []Contact{},
+		History:    []TransactionHistory{},
+		Guardians:  []Guardian{},
+		TransactionLimit: 1000.0, // Default transaction limit
 	}, nil
 }
 
@@ -40,6 +74,24 @@ func NewWallet() (*Wallet, error) {
 func GenerateAddress(publicKey []byte) string {
 	hash := sha256.Sum256(publicKey)
 	return hex.EncodeToString(hash[:])
+}
+
+// AddContact adds a new contact to the wallet.
+func (w *Wallet) AddContact(name, address string) error {
+	if len(name) > 50 {
+		return errors.New("contact name exceeds 50 characters")
+	}
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+	w.Contacts = append(w.Contacts, Contact{Name: name, Address: address})
+	return nil
+}
+
+// GetContacts retrieves all saved contacts.
+func (w *Wallet) GetContacts() []Contact {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+	return w.Contacts
 }
 
 // SignTransaction signs a transaction using the wallet's private key.
@@ -54,33 +106,91 @@ func (w *Wallet) SignTransaction(transactionHash string) (string, error) {
 	return hex.EncodeToString(signature), nil
 }
 
-// VerifySignature verifies a transaction signature using the public key.
-func VerifySignature(publicKey, signature, transactionHash string) (bool, error) {
-	pubKeyBytes, err := hex.DecodeString(publicKey)
-	if err != nil {
-		return false, err
+// AddTransactionHistory adds a transaction record to the wallet history.
+func (w *Wallet) AddTransactionHistory(to string, amount, fee float64, status string, isAnonymous bool) {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+	w.History = append(w.History, TransactionHistory{
+		Timestamp:   time.Now(),
+		To:          to,
+		Amount:      amount,
+		Fee:         fee,
+		Status:      status,
+		IsAnonymous: isAnonymous,
+	})
+}
+
+// GetHistory retrieves the transaction history.
+func (w *Wallet) GetHistory() []TransactionHistory {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+	return w.History
+}
+
+// SetTransactionLimit sets a new transaction limit.
+func (w *Wallet) SetTransactionLimit(limit float64) {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+	w.TransactionLimit = limit
+}
+
+// CheckTransactionLimit checks if a transaction exceeds the limit.
+func (w *Wallet) CheckTransactionLimit(amount float64) error {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+	if amount > w.TransactionLimit {
+		return errors.New("transaction exceeds the set limit")
 	}
+	return nil
+}
 
-	if len(pubKeyBytes) != 64 {
-		return false, errors.New("invalid public key length")
+// AddGuardian adds a new guardian for social recovery.
+func (w *Wallet) AddGuardian(name, address string) error {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+	if len(w.Guardians) >= 5 {
+		return errors.New("maximum number of guardians reached")
 	}
+	w.Guardians = append(w.Guardians, Guardian{Name: name, Address: address, Approved: false})
+	return nil
+}
 
-	x := new(big.Int).SetBytes(pubKeyBytes[:32])
-	y := new(big.Int).SetBytes(pubKeyBytes[32:])
-	sigBytes, err := hex.DecodeString(signature)
-	if err != nil {
-		return false, err
+// ApproveRecovery allows a guardian to approve the recovery process.
+func (w *Wallet) ApproveRecovery(guardianAddress string) error {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+	for i, guardian := range w.Guardians {
+		if guardian.Address == guardianAddress {
+			w.Guardians[i].Approved = true
+			return nil
+		}
 	}
+	return errors.New("guardian not found")
+}
 
-	r := new(big.Int).SetBytes(sigBytes[:len(sigBytes)/2])
-	s := new(big.Int).SetBytes(sigBytes[len(sigBytes)/2:])
-
-	hash := sha256.Sum256([]byte(transactionHash))
-	isValid := ecdsa.Verify(&ecdsa.PublicKey{Curve: elliptic.P256(), X: x, Y: y}, hash[:], r, s)
-	return isValid, nil
+// CheckRecoveryApproval checks if enough guardians have approved recovery.
+func (w *Wallet) CheckRecoveryApproval() bool {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+	approvalCount := 0
+	for _, guardian := range w.Guardians {
+		if guardian.Approved {
+			approvalCount++
+		}
+	}
+	return approvalCount >= 3
 }
 
 // UpdateBalance updates the wallet's balance by a specified amount.
 func (w *Wallet) UpdateBalance(amount float64) {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
 	w.Balance += amount
+}
+
+// GetBalance returns the wallet's current balance.
+func (w *Wallet) GetBalance() float64 {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+	return w.Balance
 }
