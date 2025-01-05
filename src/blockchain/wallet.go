@@ -150,6 +150,15 @@ func (w *Wallet) UnstakeBMT(consensus *Consensus) error {
 	return consensus.RemoveValidator(w.Address)
 }
 
+// ReceiveReward handles receiving rewards from mining or staking.
+func (w *Wallet) ReceiveReward(amount float64, rewardType string) {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+
+	w.Balance += amount
+	w.AddTransactionHistory(w.Address, amount, 0, rewardType, false)
+}
+
 // AddTransactionHistory adds a transaction record to the wallet history.
 func (w *Wallet) AddTransactionHistory(to string, amount, fee float64, status string, isAnonymous bool) {
 	w.mutex.Lock()

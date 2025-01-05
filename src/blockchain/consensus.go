@@ -160,6 +160,34 @@ func (c *Consensus) UpdateValidatorStake(address string, stake float64) error {
 	return nil
 }
 
+// DistributeRewards distributes staking rewards to validators based on their stake.
+func (c *Consensus) DistributeRewards(tokenomics *Tokenomics) error {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	if len(c.Validators) == 0 {
+		return errors.New("no validators to distribute rewards")
+	}
+
+	totalStaked := c.StakingPool
+	if totalStaked == 0 {
+		return errors.New("total staked amount is zero")
+	}
+
+	validatorsRewards := make(map[string]float64)
+	for _, validator := range c.Validators {
+		reward := (validator.Stake / totalStaked) * tokenomics.StakingRewards
+		validatorsRewards[validator.Address] = reward
+	}
+
+	err := tokenomics.DistributeStakingRewards(validatorsRewards)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // GetStakingPool returns the total staking pool.
 func (c *Consensus) GetStakingPool() float64 {
 	c.mutex.Lock()
