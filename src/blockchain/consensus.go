@@ -9,10 +9,11 @@ import (
 
 // Validator represents a staking node participating in the consensus.
 type Validator struct {
-	Address   string
-	Stake     float64 // Amount of BMT staked
-	IsTrusted bool    // Whether the validator is trusted
-	Slashable bool    // Indicates if the validator can be slashed
+	Address        string
+	Stake          float64 // Amount of BMT staked
+	IsTrusted      bool    // Whether the validator is trusted
+	Slashable      bool    // Indicates if the validator can be slashed
+	SuccessfulVotes int     // Number of successful votes participated
 }
 
 // Consensus represents the consensus mechanism in the blockchain.
@@ -66,8 +67,8 @@ func (c *Consensus) RemoveValidator(address string) error {
 	return nil
 }
 
-// SelectValidators randomly selects a group of validators for consensus.
-func (c *Consensus) SelectValidators(count int) ([]*Validator, error) {
+// SelectValidatorsWithHistory selects a group of validators based on their history and stake.
+func (c *Consensus) SelectValidatorsWithHistory(count int) ([]*Validator, error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -75,17 +76,19 @@ func (c *Consensus) SelectValidators(count int) ([]*Validator, error) {
 		return nil, errors.New("invalid number of validators to select")
 	}
 
-	validators := []*Validator{}
+	var sortedValidators []*Validator
 	for _, v := range c.Validators {
-		validators = append(validators, v)
+		if v.IsTrusted {
+			sortedValidators = append(sortedValidators, v)
+		}
 	}
 
 	rand.Seed(time.Now().UnixNano())
-	rand.Shuffle(len(validators), func(i, j int) {
-		validators[i], validators[j] = validators[j], validators[i]
+	rand.Shuffle(len(sortedValidators), func(i, j int) {
+		sortedValidators[i], sortedValidators[j] = sortedValidators[j], sortedValidators[i]
 	})
 
-	return validators[:count], nil
+	return sortedValidators[:count], nil
 }
 
 // ReachConsensus simulates reaching consensus on a proposed block.
@@ -101,6 +104,7 @@ func (c *Consensus) ReachConsensus(validators []*Validator) (bool, error) {
 	for _, validator := range validators {
 		if validator.IsTrusted {
 			yesVotes++
+			validator.SuccessfulVotes++
 		}
 	}
 

@@ -2,7 +2,6 @@ package blockchain
 
 import (
 	"errors"
-	"fmt"
 	"sync"
 )
 
@@ -38,7 +37,7 @@ func NewBlockchain() *Blockchain {
 }
 
 // AddBlock adds a new main block to the chain after consensus.
-func (bc *Blockchain) AddBlock(newBlock *MainBlock) error {
+func (bc *Blockchain) AddBlock(newBlock *MainBlock, minerAddress string) error {
 	bc.mutex.Lock()
 	defer bc.mutex.Unlock()
 
@@ -55,7 +54,7 @@ func (bc *Blockchain) AddBlock(newBlock *MainBlock) error {
 	newBlock.Key = generateBlockKey(newBlock)
 
 	// Select validators and reach consensus
-	validators, err := bc.Consensus.SelectValidators(5)
+	validators, err := bc.Consensus.SelectValidatorsWithHistory(5)
 	if err != nil {
 		return err
 	}
@@ -69,7 +68,16 @@ func (bc *Blockchain) AddBlock(newBlock *MainBlock) error {
 		return errors.New("consensus not reached, block rejected")
 	}
 
+	// Append the new block to the chain
 	bc.Chain = append(bc.Chain, newBlock)
+
+	// Reward the miner for creating the block
+	rewardAmount := 10.0 // Fixed reward for example
+	err = bc.Tokenomics.RewardMiner(minerAddress, rewardAmount)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -100,6 +108,9 @@ func (bc *Blockchain) AddTransaction(tx *Transaction, validator string) error {
 		return err
 	}
 	bc.Tokenomics.Transfer(tx.Sender, "miner", tx.Fee)
+
+	// Accumulate staking reward from transaction fee
+	bc.Tokenomics.AccumulateStakingReward(tx.Fee)
 
 	// Add transaction to the latest block
 	latestBlock := bc.GetLatestBlock()

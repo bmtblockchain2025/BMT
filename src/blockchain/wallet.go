@@ -28,13 +28,6 @@ type TransactionHistory struct {
 	IsAnonymous bool      // Whether the transaction was anonymous
 }
 
-// Guardian represents a trusted entity for social recovery.
-type Guardian struct {
-	Name    string // Name of the guardian
-	Address string // Address of the guardian
-	Approved bool  // Whether the guardian has approved recovery
-}
-
 // Wallet represents a user's wallet containing public and private keys.
 type Wallet struct {
 	PrivateKey    *ecdsa.PrivateKey
@@ -43,7 +36,6 @@ type Wallet struct {
 	Balance       float64 // Balance in BMT
 	Contacts      []Contact
 	History       []TransactionHistory
-	Guardians     []Guardian
 	TransactionLimit float64
 	StakedAmount  float64 // Amount of BMT staked
 	mutex         sync.Mutex
@@ -66,7 +58,6 @@ func NewWallet() (*Wallet, error) {
 		Balance:    0.0,
 		Contacts:   []Contact{},
 		History:    []TransactionHistory{},
-		Guardians:  []Guardian{},
 		TransactionLimit: 1000.0, // Default transaction limit
 		StakedAmount:  0.0,
 	}, nil
@@ -159,24 +150,6 @@ func (w *Wallet) UnstakeBMT(consensus *Consensus) error {
 	return consensus.RemoveValidator(w.Address)
 }
 
-// AddContact adds a new contact to the wallet.
-func (w *Wallet) AddContact(name, address string) error {
-	if len(name) > 50 {
-		return errors.New("contact name exceeds 50 characters")
-	}
-	w.mutex.Lock()
-	defer w.mutex.Unlock()
-	w.Contacts = append(w.Contacts, Contact{Name: name, Address: address})
-	return nil
-}
-
-// GetContacts retrieves all saved contacts.
-func (w *Wallet) GetContacts() []Contact {
-	w.mutex.Lock()
-	defer w.mutex.Unlock()
-	return w.Contacts
-}
-
 // AddTransactionHistory adds a transaction record to the wallet history.
 func (w *Wallet) AddTransactionHistory(to string, amount, fee float64, status string, isAnonymous bool) {
 	w.mutex.Lock()
@@ -213,43 +186,6 @@ func (w *Wallet) CheckTransactionLimit(amount float64) error {
 		return errors.New("transaction exceeds the set limit")
 	}
 	return nil
-}
-
-// AddGuardian adds a new guardian for social recovery.
-func (w *Wallet) AddGuardian(name, address string) error {
-	w.mutex.Lock()
-	defer w.mutex.Unlock()
-	if len(w.Guardians) >= 5 {
-		return errors.New("maximum number of guardians reached")
-	}
-	w.Guardians = append(w.Guardians, Guardian{Name: name, Address: address, Approved: false})
-	return nil
-}
-
-// ApproveRecovery allows a guardian to approve the recovery process.
-func (w *Wallet) ApproveRecovery(guardianAddress string) error {
-	w.mutex.Lock()
-	defer w.mutex.Unlock()
-	for i, guardian := range w.Guardians {
-		if guardian.Address == guardianAddress {
-			w.Guardians[i].Approved = true
-			return nil
-		}
-	}
-	return errors.New("guardian not found")
-}
-
-// CheckRecoveryApproval checks if enough guardians have approved recovery.
-func (w *Wallet) CheckRecoveryApproval() bool {
-	w.mutex.Lock()
-	defer w.mutex.Unlock()
-	approvalCount := 0
-	for _, guardian := range w.Guardians {
-		if guardian.Approved {
-			approvalCount++
-		}
-	}
-	return approvalCount >= 3
 }
 
 // UpdateBalance updates the wallet's balance by a specified amount.

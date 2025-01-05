@@ -18,6 +18,7 @@ type Transaction struct {
 	Hash      string  // Hash of the transaction
 	Signature string  // Digital signature of the transaction
 	Anonymous bool    // Whether the transaction is anonymous
+	ZKPProof  string  // Zero-Knowledge Proof for anonymous transactions
 }
 
 // NewTransaction creates a new transaction with given details.
@@ -43,6 +44,9 @@ func NewTransaction(sender, receiver string, amount, fee float64, anonymous bool
 	}
 
 	tx.Hash = tx.CalculateHash()
+	if anonymous {
+		tx.ZKPProof = tx.GenerateZKP()
+	}
 	return tx, nil
 }
 
@@ -56,6 +60,9 @@ func (t *Transaction) CalculateHash() string {
 
 // Validate checks if the transaction is valid.
 func (t *Transaction) Validate() bool {
+	if t.Anonymous {
+		return t.ValidateZKP(t.ZKPProof)
+	}
 	return t.Hash == t.CalculateHash() && t.Amount > 0 && t.Fee >= 0
 }
 
@@ -68,4 +75,15 @@ func (t *Transaction) SignTransaction(signature string) {
 func VerifyTransactionSignature(publicKey, signature, hash string) (bool, error) {
 	// Reuse the VerifySignature function from wallet.go
 	return VerifySignature(publicKey, signature, hash)
+}
+
+// Zero-Knowledge Proof integration (dummy example)
+func (t *Transaction) GenerateZKP() string {
+	hash := sha256.Sum256([]byte(t.Sender + t.Receiver + strconv.FormatFloat(t.Amount, 'f', 8, 64)))
+	return hex.EncodeToString(hash[:])
+}
+
+func (t *Transaction) ValidateZKP(proof string) bool {
+	expectedProof := t.GenerateZKP()
+	return expectedProof == proof
 }

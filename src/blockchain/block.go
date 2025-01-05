@@ -2,14 +2,13 @@ package blockchain
 
 import (
 	"crypto/sha256"
+	"container/heap"
 	"encoding/hex"
 	"errors"
-	"fmt"
-	"math/rand"
-	"strconv"
-	"strings"
 	"sync"
+	"strconv"
 	"time"
+	"math/rand"
 )
 
 // Constants for block size limits
@@ -20,6 +19,7 @@ const (
 	MaxTransactionsPerBlock = 10000       // Example max transactions per block
 	TargetMiningTime   = 0.01             // Target time (in seconds) for mining
 	MaxMiniBlocks      = 10               // Maximum number of mini-blocks per sub-block
+	WorkerCount        = 10               // Number of workers in worker pool
 )
 
 // MiniBlock represents a mini block within the blockchain.
@@ -34,41 +34,41 @@ type MiniBlock struct {
 	ValidatorSig string         // Signature of the validator proposing the mini-block
 }
 
-// SubBlock represents a medium block containing multiple mini-blocks.
-type SubBlock struct {
-	Index      int        // Position of the sub-block
-	MiniBlocks []MiniBlock // Mini-blocks within this sub-block
-	Hash       string     // Unique hash of the sub-block
-	Key        string     // Unique key for the sub-block
-	Validator  string     // Address of the validator proposing the sub-block
-	IsFull     bool       // Indicates whether the sub-block is full
-}
+// Priority Queue for mini-blocks
+type MiniBlockHeap []MiniBlock
 
-// MainBlock represents a large block containing multiple sub-blocks.
-type MainBlock struct {
-	Index     int        // Position of the main block
-	SubBlocks []SubBlock // Sub-blocks within this main block
-	Hash      string     // Unique hash of the main block
-	Key       string     // Unique key for the main block
-	Validator string     // Address of the validator proposing the main block
-	Status    string     // Status of the block: Pending, Validated, Finalized
-	IsFull    bool       // Indicates whether the main block is full
+func (h MiniBlockHeap) Len() int           { return len(h) }
+func (h MiniBlockHeap) Less(i, j int) bool { return h[i].CurrentSize < h[j].CurrentSize }
+func (h MiniBlockHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+func (h *MiniBlockHeap) Push(x interface{}) {
+	*h = append(*h, x.(MiniBlock))
+}
+func (h *MiniBlockHeap) Pop() interface{} {
+	old := *h
+	n := len(old)
+	x := old[n-1]
+	*h = old[0 : n-1]
+	return x
 }
 
 // Mutex to synchronize mining and consensus operations
-var mutex sync.Mutex
-var processedTransactions sync.Map        // Map to track processed transactions using sync.Map for concurrency safety
-var availableMiniBlocks []MiniBlock       // List of available mini-blocks (not full)
-var fullMiniBlocks []MiniBlock            // List of full mini-blocks
+var (
+	mutex          sync.Mutex
+	processedTransactions sync.Map        // Map to track processed transactions using sync.Map for concurrency safety
+	miniBlockQueue  MiniBlockHeap         // Priority queue for available mini-blocks
+	fullMiniBlocks  []MiniBlock           // List of full mini-blocks
+	wg             sync.WaitGroup
+)
 
-// updateMiniBlockLists updates the lists of available and full mini-blocks.
-func updateMiniBlockLists(miniBlock *MiniBlock, selectedIndex int) {
-	if miniBlock.IsFull {
-		fullMiniBlocks = append(fullMiniBlocks, *miniBlock)
-		availableMiniBlocks = append(availableMiniBlocks[:selectedIndex], availableMiniBlocks[selectedIndex+1:]...)
-	} else {
-		availableMiniBlocks[selectedIndex] = *miniBlock
-	}
+func init() {
+	heap.Init(&miniBlockQueue)
+}
+
+// updateMiniBlockQueue updates the priority queue after processing a mini-block.
+func updateMiniBlockQueue(miniBlock MiniBlock) {
+	mutex.Lock()
+	heap.Push(&miniBlockQueue, miniBlock)
+	mutex.Unlock()
 }
 
 // MineTransaction processes transactions and assigns them to a mini-block in a sub-block.
@@ -78,14 +78,12 @@ func MineTransaction(transactions []*Transaction, mainBlock *MainBlock, validato
 		return nil, errors.New("transaction already processed")
 	}
 
-	if len(availableMiniBlocks) == 0 {
+	if miniBlockQueue.Len() == 0 {
 		return nil, errors.New("no available mini-block to record transaction")
 	}
 
-	// Randomly select an available mini-block without locking the entire function
-	selectedIndex := rand.Intn(len(availableMiniBlocks))
-	mutex.Lock() // Lock only for critical section to update mini-block
-	miniBlock := &availableMiniBlocks[selectedIndex]
+	mutex.Lock()
+	miniBlock := heap.Pop(&miniBlockQueue).(MiniBlock)
 	totalTransactionSize := calculateTransactionsSize(transactions)
 	if miniBlock.CurrentSize+totalTransactionSize > MaxMiniBlockSize {
 		mutex.Unlock()
@@ -97,8 +95,10 @@ func MineTransaction(transactions []*Transaction, mainBlock *MainBlock, validato
 	miniBlock.ValidatorSig = validator // Attach validator signature
 	if miniBlock.CurrentSize == MaxMiniBlockSize {
 		miniBlock.IsFull = true
+		fullMiniBlocks = append(fullMiniBlocks, miniBlock)
+	} else {
+		updateMiniBlockQueue(miniBlock)
 	}
-	updateMiniBlockLists(miniBlock, selectedIndex)
 	mutex.Unlock()
 
 	miniBlock.MerkleRoot = calculateMerkleRoot(transactions)
@@ -109,12 +109,32 @@ func MineTransaction(transactions []*Transaction, mainBlock *MainBlock, validato
 			break
 		}
 	}
-	return miniBlock, nil
+	return &miniBlock, nil
+}
+
+// ProcessTransactionsUsingWorkerPool processes transactions using a worker pool.
+func ProcessTransactionsUsingWorkerPool(transactions []*Transaction, mainBlock *MainBlock, validator string) {
+	transactionChannel := make(chan *Transaction, len(transactions))
+
+	for i := 0; i < WorkerCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for tx := range transactionChannel {
+				_ = NewTransaction([]*Transaction{tx}, mainBlock, validator)
+			}
+		}()
+	}
+
+	for _, tx := range transactions {
+		transactionChannel <- tx
+	}
+	close(transactionChannel)
+	wg.Wait()
 }
 
 // NewTransaction handles the full lifecycle of a transaction.
 func NewTransaction(transactions []*Transaction, mainBlock *MainBlock, validator string) error {
-	// Validate and sign transactions before adding them to the block
 	for _, tx := range transactions {
 		if !tx.Validate() {
 			return errors.New("invalid transaction detected")
@@ -126,31 +146,10 @@ func NewTransaction(transactions []*Transaction, mainBlock *MainBlock, validator
 		return err
 	}
 
-	// Check if the main block is full after adding the mini-block
 	if len(mainBlock.SubBlocks) == MaxMiniBlocks {
 		mainBlock.IsFull = true
 	}
 	return nil
-}
-
-// ProcessTransactionsConcurrently processes transactions concurrently using unlimited Goroutines.
-func ProcessTransactionsConcurrently(transactions []*Transaction, mainBlock *MainBlock, validator string) {
-	var wg sync.WaitGroup
-	transactionChannel := make(chan *Transaction, len(transactions))
-
-	for _, tx := range transactions {
-		transactionChannel <- tx
-	}
-	close(transactionChannel)
-
-	for tx := range transactionChannel {
-		wg.Add(1)
-		go func(tx *Transaction) {
-			defer wg.Done()
-			_ = NewTransaction([]*Transaction{tx}, mainBlock, validator)
-		}(tx)
-	}
-	wg.Wait()
 }
 
 // calculateMiniBlockHash generates the hash for a mini-block.
