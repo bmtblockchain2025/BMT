@@ -31,6 +31,7 @@ type MiniBlock struct {
 	IsFull       bool           // Indicates whether the mini-block is full
 	Key          string         // Unique key for the mini-block
 	MerkleRoot   string         // Merkle root for transactions integrity
+	ValidatorSig string         // Signature of the validator proposing the mini-block
 }
 
 // SubBlock represents a medium block containing multiple mini-blocks.
@@ -39,6 +40,8 @@ type SubBlock struct {
 	MiniBlocks []MiniBlock // Mini-blocks within this sub-block
 	Hash       string     // Unique hash of the sub-block
 	Key        string     // Unique key for the sub-block
+	Validator  string     // Address of the validator proposing the sub-block
+	IsFull     bool       // Indicates whether the sub-block is full
 }
 
 // MainBlock represents a large block containing multiple sub-blocks.
@@ -47,6 +50,9 @@ type MainBlock struct {
 	SubBlocks []SubBlock // Sub-blocks within this main block
 	Hash      string     // Unique hash of the main block
 	Key       string     // Unique key for the main block
+	Validator string     // Address of the validator proposing the main block
+	Status    string     // Status of the block: Pending, Validated, Finalized
+	IsFull    bool       // Indicates whether the main block is full
 }
 
 // Mutex to synchronize mining and consensus operations
@@ -66,7 +72,7 @@ func updateMiniBlockLists(miniBlock *MiniBlock, selectedIndex int) {
 }
 
 // MineTransaction processes transactions and assigns them to a mini-block in a sub-block.
-func MineTransaction(transactions []*Transaction, mainBlock *MainBlock) (*MiniBlock, error) {
+func MineTransaction(transactions []*Transaction, mainBlock *MainBlock, validator string) (*MiniBlock, error) {
 	txID := generateTransactionID(transactions)
 	if _, loaded := processedTransactions.LoadOrStore(txID, true); loaded {
 		return nil, errors.New("transaction already processed")
@@ -88,6 +94,7 @@ func MineTransaction(transactions []*Transaction, mainBlock *MainBlock) (*MiniBl
 
 	miniBlock.Transactions = append(miniBlock.Transactions, transactions...)
 	miniBlock.CurrentSize += totalTransactionSize
+	miniBlock.ValidatorSig = validator // Attach validator signature
 	if miniBlock.CurrentSize == MaxMiniBlockSize {
 		miniBlock.IsFull = true
 	}
@@ -106,7 +113,7 @@ func MineTransaction(transactions []*Transaction, mainBlock *MainBlock) (*MiniBl
 }
 
 // NewTransaction handles the full lifecycle of a transaction.
-func NewTransaction(transactions []*Transaction, mainBlock *MainBlock) error {
+func NewTransaction(transactions []*Transaction, mainBlock *MainBlock, validator string) error {
 	// Validate and sign transactions before adding them to the block
 	for _, tx := range transactions {
 		if !tx.Validate() {
@@ -114,15 +121,20 @@ func NewTransaction(transactions []*Transaction, mainBlock *MainBlock) error {
 		}
 	}
 
-	_, err := MineTransaction(transactions, mainBlock)
+	miniBlock, err := MineTransaction(transactions, mainBlock, validator)
 	if err != nil {
 		return err
+	}
+
+	// Check if the main block is full after adding the mini-block
+	if len(mainBlock.SubBlocks) == MaxMiniBlocks {
+		mainBlock.IsFull = true
 	}
 	return nil
 }
 
 // ProcessTransactionsConcurrently processes transactions concurrently using unlimited Goroutines.
-func ProcessTransactionsConcurrently(transactions []*Transaction, mainBlock *MainBlock) {
+func ProcessTransactionsConcurrently(transactions []*Transaction, mainBlock *MainBlock, validator string) {
 	var wg sync.WaitGroup
 	transactionChannel := make(chan *Transaction, len(transactions))
 
@@ -135,7 +147,7 @@ func ProcessTransactionsConcurrently(transactions []*Transaction, mainBlock *Mai
 		wg.Add(1)
 		go func(tx *Transaction) {
 			defer wg.Done()
-			_ = NewTransaction([]*Transaction{tx}, mainBlock)
+			_ = NewTransaction([]*Transaction{tx}, mainBlock, validator)
 		}(tx)
 	}
 	wg.Wait()

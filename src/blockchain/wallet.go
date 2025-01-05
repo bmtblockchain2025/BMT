@@ -45,6 +45,7 @@ type Wallet struct {
 	History       []TransactionHistory
 	Guardians     []Guardian
 	TransactionLimit float64
+	StakedAmount  float64 // Amount of BMT staked
 	mutex         sync.Mutex
 }
 
@@ -67,6 +68,7 @@ func NewWallet() (*Wallet, error) {
 		History:    []TransactionHistory{},
 		Guardians:  []Guardian{},
 		TransactionLimit: 1000.0, // Default transaction limit
+		StakedAmount:  0.0,
 	}, nil
 }
 
@@ -121,6 +123,40 @@ func (w *Wallet) SignTransaction(transactionHash string) (string, error) {
 
 	signature := append(r.Bytes(), s.Bytes()...)
 	return hex.EncodeToString(signature), nil
+}
+
+// StakeBMT stakes a specified amount of BMT to become a validator.
+func (w *Wallet) StakeBMT(amount float64, consensus *Consensus) error {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+
+	if amount <= 0 {
+		return errors.New("stake amount must be greater than zero")
+	}
+	if amount > w.Balance {
+		return errors.New("insufficient balance to stake")
+	}
+
+	w.Balance -= amount
+	w.StakedAmount += amount
+
+	return consensus.AddValidator(w.Address, w.StakedAmount)
+}
+
+// UnstakeBMT removes the staked amount and updates the balance.
+func (w *Wallet) UnstakeBMT(consensus *Consensus) error {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+
+	if w.StakedAmount == 0 {
+		return errors.New("no staked amount to unstake")
+	}
+
+	amount := w.StakedAmount
+	w.Balance += amount
+	w.StakedAmount = 0
+
+	return consensus.RemoveValidator(w.Address)
 }
 
 // AddContact adds a new contact to the wallet.

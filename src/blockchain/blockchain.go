@@ -8,28 +8,37 @@ import (
 
 // Blockchain represents the chain of blocks and tokenomics system.
 type Blockchain struct {
-	Chain        []*Block    // Slice of blocks
-	Tokenomics   *Tokenomics // Tokenomics for managing BMT Coin
+	Chain        []*MainBlock  // Slice of main blocks
+	Tokenomics   *Tokenomics   // Tokenomics for managing BMT Coin
+	Consensus    *Consensus    // Consensus mechanism
 	mutex        sync.RWMutex  // RWMutex for concurrent access
-	LockedBlocks int          // Number of locked blocks that won't be modified
+	LockedBlocks int           // Number of locked blocks that won't be modified
 }
 
-// NewBlockchain initializes a new blockchain with tokenomics.
+// NewBlockchain initializes a new blockchain with tokenomics and consensus.
 func NewBlockchain() *Blockchain {
-	genesisBlock := NewBlock(0, []string{"Genesis Block"}, "0")
+	genesisBlock := &MainBlock{
+		Index:     0,
+		SubBlocks: []SubBlock{},
+		Hash:      "0",
+		Key:       "genesis-key",
+		Validator: "system",
+		Status:    "Finalized",
+	}
 	tokenomics := NewTokenomics(8_000_000_000.0, 8_000_000_000.0)
 	// Assign initial supply to the system wallet
 	tokenomics.Balances["system"] = 8_000_000_000.0
 
 	return &Blockchain{
-		Chain:        []*Block{genesisBlock},
+		Chain:        []*MainBlock{genesisBlock},
 		Tokenomics:   tokenomics,
+		Consensus:    NewConsensus(),
 		LockedBlocks: 0,
 	}
 }
 
-// AddBlock adds a new block to the chain with raw transaction data if the previous block is not locked.
-func (bc *Blockchain) AddBlock(transactions []string) error {
+// AddBlock adds a new main block to the chain after consensus.
+func (bc *Blockchain) AddBlock(newBlock *MainBlock) error {
 	bc.mutex.Lock()
 	defer bc.mutex.Unlock()
 
@@ -42,13 +51,30 @@ func (bc *Blockchain) AddBlock(transactions []string) error {
 		return errors.New("last block is nil")
 	}
 
-	newBlock := CreateBlock(lastBlock.Index+1, transactions, lastBlock.Hash)
+	newBlock.Index = lastBlock.Index + 1
+	newBlock.Key = generateBlockKey(newBlock)
+
+	// Select validators and reach consensus
+	validators, err := bc.Consensus.SelectValidators(5)
+	if err != nil {
+		return err
+	}
+
+	agreed, err := bc.Consensus.ReachConsensus(validators)
+	if err != nil {
+		return err
+	}
+
+	if !agreed {
+		return errors.New("consensus not reached, block rejected")
+	}
+
 	bc.Chain = append(bc.Chain, newBlock)
 	return nil
 }
 
 // AddTransaction adds a new transaction to the blockchain after validation.
-func (bc *Blockchain) AddTransaction(tx *Transaction) error {
+func (bc *Blockchain) AddTransaction(tx *Transaction, validator string) error {
 	bc.mutex.Lock()
 	defer bc.mutex.Unlock()
 
@@ -77,52 +103,22 @@ func (bc *Blockchain) AddTransaction(tx *Transaction) error {
 
 	// Add transaction to the latest block
 	latestBlock := bc.GetLatestBlock()
-	latestBlock.AddTransaction(tx)
+	if latestBlock.IsFull {
+		return errors.New("latest block is full, cannot add transaction")
+	}
+
+	subBlock := SubBlock{
+		Index:      len(latestBlock.SubBlocks),
+		MiniBlocks: []MiniBlock{},
+		Validator:  validator,
+	}
+	latestBlock.SubBlocks = append(latestBlock.SubBlocks, subBlock)
 
 	return nil
-}
-
-// AddTransactionBlock adds a block containing validated transactions to the blockchain if not locked.
-func (bc *Blockchain) AddTransactionBlock(transactions []*Transaction) error {
-	bc.mutex.Lock()
-	defer bc.mutex.Unlock()
-
-	if len(bc.Chain) <= bc.LockedBlocks {
-		return errors.New("all blocks are locked, cannot add transaction block")
-	}
-
-	if len(transactions) == 0 {
-		return errors.New("no transactions to add")
-	}
-
-	for _, tx := range transactions {
-		if !tx.Validate() {
-			return errors.New("invalid transaction detected")
-		}
-	}
-
-	transactionData := ExtractTransactionData(transactions)
-	lastBlock := bc.GetLatestBlock()
-	if lastBlock == nil {
-		return errors.New("last block is nil")
-	}
-
-	newBlock := CreateBlock(lastBlock.Index+1, transactionData, lastBlock.Hash)
-	newBlock.MerkleRoot = CalculateMerkleRoot(transactions)
-	bc.Chain = append(bc.Chain, newBlock)
-	return nil
-}
-
-// IsValid checks if the blockchain is valid by verifying all blocks.
-func (bc *Blockchain) IsValid() bool {
-	bc.mutex.RLock()
-	defer bc.mutex.RUnlock()
-
-	return ValidateChain(bc.Chain)
 }
 
 // GetLatestBlock retrieves the last block in the blockchain.
-func (bc *Blockchain) GetLatestBlock() *Block {
+func (bc *Blockchain) GetLatestBlock() *MainBlock {
 	return bc.Chain[len(bc.Chain)-1]
 }
 
