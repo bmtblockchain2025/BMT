@@ -1,4 +1,3 @@
-// Package blockchain provides core blockchain structures and functions.
 package blockchain
 
 import (
@@ -23,33 +22,10 @@ const (
 	MaxMiniBlocks      = 10               // Maximum number of mini-blocks per sub-block
 )
 
-// TrustedValidators represents a list of staking nodes.
-var TrustedValidators = map[string]bool{
-	"staking-node-1": true,
-	"staking-node-2": true,
-	"staking-node-3": true,
-}
-
-// Miners represents a list of mining nodes.
-var Miners = []string{
-	"miner-node-1",
-	"miner-node-2",
-	"miner-node-3",
-}
-
-// Transaction represents a single transaction in the blockchain.
-type Transaction struct {
-	Sender    string  // Address of the sender
-	Receiver  string  // Address of the receiver
-	Amount    float64 // Amount being transferred
-	Timestamp time.Time // Time of transaction creation
-	Signature string  // Digital signature for transaction integrity
-}
-
 // MiniBlock represents a mini block within the blockchain.
 type MiniBlock struct {
 	Index        int            // Position of the mini-block in the blockchain
-	Transactions []Transaction  // Transactions included in the mini-block
+	Transactions []*Transaction  // Transactions included in the mini-block
 	Hash         string         // Hash of the mini-block
 	CurrentSize  int            // Current size of the mini-block in bytes
 	IsFull       bool           // Indicates whether the mini-block is full
@@ -75,7 +51,6 @@ type MainBlock struct {
 
 // Mutex to synchronize mining and consensus operations
 var mutex sync.Mutex
-var previousMiningTime = TargetMiningTime // Initialize with target time
 var processedTransactions sync.Map        // Map to track processed transactions using sync.Map for concurrency safety
 var availableMiniBlocks []MiniBlock       // List of available mini-blocks (not full)
 var fullMiniBlocks []MiniBlock            // List of full mini-blocks
@@ -90,25 +65,8 @@ func updateMiniBlockLists(miniBlock *MiniBlock, selectedIndex int) {
 	}
 }
 
-// ValidateTransactionWithFastConsensus performs fast consensus using a small group of validators.
-func ValidateTransactionWithFastConsensus(transactions []Transaction) bool {
-	if len(transactions) == 0 {
-		return false
-	}
-	requiredVotes := 1
-	votes := 0
-	for validator := range TrustedValidators {
-		votes++
-		if votes >= requiredVotes {
-			break
-		}
-	}
-	time.Sleep(10 * time.Millisecond) // Simulate 0.01 second delay for consensus
-	return true
-}
-
 // MineTransaction processes transactions and assigns them to a mini-block in a sub-block.
-func MineTransaction(transactions []Transaction, mainBlock *MainBlock) (*MiniBlock, error) {
+func MineTransaction(transactions []*Transaction, mainBlock *MainBlock) (*MiniBlock, error) {
 	txID := generateTransactionID(transactions)
 	if _, loaded := processedTransactions.LoadOrStore(txID, true); loaded {
 		return nil, errors.New("transaction already processed")
@@ -136,7 +94,7 @@ func MineTransaction(transactions []Transaction, mainBlock *MainBlock) (*MiniBlo
 	updateMiniBlockLists(miniBlock, selectedIndex)
 	mutex.Unlock()
 
-	miniBlock.MerkleRoot = calculateMerkleRoot(miniBlock.Transactions)
+	miniBlock.MerkleRoot = calculateMerkleRoot(transactions)
 	suffix := calculateDynamicDifficulty()
 	for {
 		miniBlock.Hash = calculateMiniBlockHash(miniBlock.Index, miniBlock.Transactions)
@@ -148,9 +106,12 @@ func MineTransaction(transactions []Transaction, mainBlock *MainBlock) (*MiniBlo
 }
 
 // NewTransaction handles the full lifecycle of a transaction.
-func NewTransaction(transactions []Transaction, mainBlock *MainBlock) error {
-	if !ValidateTransactionWithFastConsensus(transactions) {
-		return errors.New("transaction validation failed")
+func NewTransaction(transactions []*Transaction, mainBlock *MainBlock) error {
+	// Validate and sign transactions before adding them to the block
+	for _, tx := range transactions {
+		if !tx.Validate() {
+			return errors.New("invalid transaction detected")
+		}
 	}
 
 	_, err := MineTransaction(transactions, mainBlock)
@@ -161,9 +122,9 @@ func NewTransaction(transactions []Transaction, mainBlock *MainBlock) error {
 }
 
 // ProcessTransactionsConcurrently processes transactions concurrently using unlimited Goroutines.
-func ProcessTransactionsConcurrently(transactions []Transaction, mainBlock *MainBlock) {
+func ProcessTransactionsConcurrently(transactions []*Transaction, mainBlock *MainBlock) {
 	var wg sync.WaitGroup
-	transactionChannel := make(chan Transaction, len(transactions))
+	transactionChannel := make(chan *Transaction, len(transactions))
 
 	for _, tx := range transactions {
 		transactionChannel <- tx
@@ -172,23 +133,23 @@ func ProcessTransactionsConcurrently(transactions []Transaction, mainBlock *Main
 
 	for tx := range transactionChannel {
 		wg.Add(1)
-		go func(tx Transaction) {
+		go func(tx *Transaction) {
 			defer wg.Done()
-			_ = NewTransaction([]Transaction{tx}, mainBlock)
+			_ = NewTransaction([]*Transaction{tx}, mainBlock)
 		}(tx)
 	}
 	wg.Wait()
 }
 
 // calculateMiniBlockHash generates the hash for a mini-block.
-func calculateMiniBlockHash(index int, transactions []Transaction) string {
+func calculateMiniBlockHash(index int, transactions []*Transaction) string {
 	record := strconv.Itoa(index) + concatTransactions(transactions)
 	hash := sha256.Sum256([]byte(record))
 	return hex.EncodeToString(hash[:])
 }
 
 // calculateTransactionsSize calculates the total size of a list of transactions in bytes.
-func calculateTransactionsSize(transactions []Transaction) int {
+func calculateTransactionsSize(transactions []*Transaction) int {
 	size := 0
 	for _, tx := range transactions {
 		size += len(tx.Sender) + len(tx.Receiver) + 8 + len(tx.Timestamp.String()) + len(tx.Signature)
@@ -196,13 +157,8 @@ func calculateTransactionsSize(transactions []Transaction) int {
 	return size
 }
 
-// calculateDynamicDifficulty adjusts the difficulty based on the target mining time.
-func calculateDynamicDifficulty() string {
-	return "00" // Simulate fast mining with fixed difficulty
-}
-
 // concatTransactions concatenates all transactions into a single string.
-func concatTransactions(transactions []Transaction) string {
+func concatTransactions(transactions []*Transaction) string {
 	var builder strings.Builder
 	for _, tx := range transactions {
 		builder.WriteString(tx.Sender)
@@ -215,7 +171,7 @@ func concatTransactions(transactions []Transaction) string {
 }
 
 // generateTransactionID generates a unique ID for a transaction.
-func generateTransactionID(transactions []Transaction) string {
+func generateTransactionID(transactions []*Transaction) string {
 	var builder strings.Builder
 	for _, tx := range transactions {
 		builder.WriteString(tx.Sender)
@@ -228,13 +184,13 @@ func generateTransactionID(transactions []Transaction) string {
 }
 
 // calculateMerkleRoot calculates the Merkle root for a list of transactions.
-func calculateMerkleRoot(transactions []Transaction) string {
+func calculateMerkleRoot(transactions []*Transaction) string {
 	if len(transactions) == 0 {
 		return ""
 	}
 	var hashes []string
 	for _, tx := range transactions {
-		hashes = append(hashes, generateTransactionID([]Transaction{tx}))
+		hashes = append(hashes, generateTransactionID([]*Transaction{tx}))
 	}
 	for len(hashes) > 1 {
 		var newLevel []string

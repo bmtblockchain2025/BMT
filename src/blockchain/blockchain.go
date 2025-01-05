@@ -47,6 +47,41 @@ func (bc *Blockchain) AddBlock(transactions []string) error {
 	return nil
 }
 
+// AddTransaction adds a new transaction to the blockchain after validation.
+func (bc *Blockchain) AddTransaction(tx *Transaction) error {
+	bc.mutex.Lock()
+	defer bc.mutex.Unlock()
+
+	// Validate the transaction
+	if !tx.Validate() {
+		return errors.New("invalid transaction")
+	}
+
+	// Verify the signature
+	valid, err := VerifyTransactionSignature(tx.Sender, tx.Signature, tx.Hash)
+	if err != nil || !valid {
+		return errors.New("invalid transaction signature")
+	}
+
+	// Check sender's balance
+	if bc.Tokenomics.GetBalance(tx.Sender) < tx.Amount+tx.Fee {
+		return errors.New("insufficient balance")
+	}
+
+	// Update balances
+	err = bc.Tokenomics.Transfer(tx.Sender, tx.Receiver, tx.Amount)
+	if err != nil {
+		return err
+	}
+	bc.Tokenomics.Transfer(tx.Sender, "miner", tx.Fee)
+
+	// Add transaction to the latest block
+	latestBlock := bc.GetLatestBlock()
+	latestBlock.AddTransaction(tx)
+
+	return nil
+}
+
 // AddTransactionBlock adds a block containing validated transactions to the blockchain if not locked.
 func (bc *Blockchain) AddTransactionBlock(transactions []*Transaction) error {
 	bc.mutex.Lock()
@@ -74,31 +109,6 @@ func (bc *Blockchain) AddTransactionBlock(transactions []*Transaction) error {
 
 	newBlock := CreateBlock(lastBlock.Index+1, transactionData, lastBlock.Hash)
 	newBlock.MerkleRoot = CalculateMerkleRoot(transactions)
-	bc.Chain = append(bc.Chain, newBlock)
-	return nil
-}
-
-// AddTransactionWithTokenomics adds a transaction to the blockchain and updates balances if not locked.
-func (bc *Blockchain) AddTransactionWithTokenomics(from, to string, amount float64) error {
-	bc.mutex.Lock()
-	defer bc.mutex.Unlock()
-
-	if len(bc.Chain) <= bc.LockedBlocks {
-		return errors.New("all blocks are locked, cannot add transaction with tokenomics")
-	}
-
-	err := bc.Tokenomics.Transfer(from, to, amount)
-	if err != nil {
-		return err
-	}
-
-	transaction := []string{fmt.Sprintf("%s -> %s: %.7f BMT", from, to, amount)}
-	lastBlock := bc.GetLatestBlock()
-	if lastBlock == nil {
-		return errors.New("last block is nil")
-	}
-
-	newBlock := CreateBlock(lastBlock.Index+1, transaction, lastBlock.Hash)
 	bc.Chain = append(bc.Chain, newBlock)
 	return nil
 }

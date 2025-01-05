@@ -76,6 +76,53 @@ func GenerateAddress(publicKey []byte) string {
 	return hex.EncodeToString(hash[:])
 }
 
+// CreateAndSignTransaction creates a new transaction and signs it using the wallet's private key.
+func (w *Wallet) CreateAndSignTransaction(receiver string, amount, fee float64, anonymous bool) (*Transaction, error) {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+
+	if amount <= 0 {
+		return nil, errors.New("amount must be greater than zero")
+	}
+	if amount+fee > w.Balance {
+		return nil, errors.New("insufficient balance")
+	}
+
+	if err := w.CheckTransactionLimit(amount); err != nil {
+		return nil, err
+	}
+
+	// Create the transaction
+	tx, err := NewTransaction(w.Address, receiver, amount, fee, anonymous)
+	if err != nil {
+		return nil, err
+	}
+
+	// Sign the transaction
+	signature, err := w.SignTransaction(tx.Hash)
+	if err != nil {
+		return nil, err
+	}
+	tx.SignTransaction(signature)
+
+	// Add transaction to history
+	w.AddTransactionHistory(receiver, amount, fee, "pending", anonymous)
+
+	return tx, nil
+}
+
+// SignTransaction signs a transaction using the wallet's private key.
+func (w *Wallet) SignTransaction(transactionHash string) (string, error) {
+	hash := sha256.Sum256([]byte(transactionHash))
+	r, s, err := ecdsa.Sign(rand.Reader, w.PrivateKey, hash[:])
+	if err != nil {
+		return "", err
+	}
+
+	signature := append(r.Bytes(), s.Bytes()...)
+	return hex.EncodeToString(signature), nil
+}
+
 // AddContact adds a new contact to the wallet.
 func (w *Wallet) AddContact(name, address string) error {
 	if len(name) > 50 {
@@ -92,18 +139,6 @@ func (w *Wallet) GetContacts() []Contact {
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
 	return w.Contacts
-}
-
-// SignTransaction signs a transaction using the wallet's private key.
-func (w *Wallet) SignTransaction(transactionHash string) (string, error) {
-	hash := sha256.Sum256([]byte(transactionHash))
-	r, s, err := ecdsa.Sign(rand.Reader, w.PrivateKey, hash[:])
-	if err != nil {
-		return "", err
-	}
-
-	signature := append(r.Bytes(), s.Bytes()...)
-	return hex.EncodeToString(signature), nil
 }
 
 // AddTransactionHistory adds a transaction record to the wallet history.

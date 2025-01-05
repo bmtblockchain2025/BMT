@@ -5,19 +5,23 @@ import (
 	"encoding/hex"
 	"errors"
 	"strconv"
+	"time"
 )
 
 // Transaction represents a single transaction in the blockchain.
 type Transaction struct {
 	Sender    string  // Address of the sender
 	Receiver  string  // Address of the receiver
-	Amount    float64 // Amount being transferred (supports up to 0.0000001 BMT)
+	Amount    float64 // Amount being transferred (supports up to 0.00000001 BMT)
+	Fee       float64 // Transaction fee
 	Timestamp int64   // Unix timestamp of the transaction
 	Hash      string  // Hash of the transaction
+	Signature string  // Digital signature of the transaction
+	Anonymous bool    // Whether the transaction is anonymous
 }
 
 // NewTransaction creates a new transaction with given details.
-func NewTransaction(sender, receiver string, amount float64, timestamp int64) (*Transaction, error) {
+func NewTransaction(sender, receiver string, amount, fee float64, anonymous bool) (*Transaction, error) {
 	// Validate inputs
 	if sender == "" || receiver == "" {
 		return nil, errors.New("sender and receiver addresses cannot be empty")
@@ -25,32 +29,43 @@ func NewTransaction(sender, receiver string, amount float64, timestamp int64) (*
 	if amount <= 0 {
 		return nil, errors.New("transaction amount must be positive")
 	}
-	if amount < 0.0000001 {
-		return nil, errors.New("transaction amount must be at least 0.0000001 BMT")
+	if fee < 0 {
+		return nil, errors.New("transaction fee cannot be negative")
 	}
 
-	// Create the transaction
 	tx := &Transaction{
 		Sender:    sender,
 		Receiver:  receiver,
 		Amount:    amount,
-		Timestamp: timestamp,
+		Fee:       fee,
+		Timestamp: time.Now().Unix(),
+		Anonymous: anonymous,
 	}
 
-	// Calculate the hash
 	tx.Hash = tx.CalculateHash()
-
 	return tx, nil
 }
 
 // CalculateHash generates a hash for the transaction.
 func (t *Transaction) CalculateHash() string {
-	record := t.Sender + t.Receiver + strconv.FormatInt(t.Timestamp, 10) + strconv.FormatFloat(t.Amount, 'f', 7, 64)
+	record := t.Sender + t.Receiver + strconv.FormatInt(t.Timestamp, 10) +
+		strconv.FormatFloat(t.Amount, 'f', 8, 64) + strconv.FormatFloat(t.Fee, 'f', 8, 64)
 	hash := sha256.Sum256([]byte(record))
 	return hex.EncodeToString(hash[:])
 }
 
 // Validate checks if the transaction is valid.
 func (t *Transaction) Validate() bool {
-	return t.Hash == t.CalculateHash()
+	return t.Hash == t.CalculateHash() && t.Amount > 0 && t.Fee >= 0
+}
+
+// SignTransaction signs the transaction using a given private key.
+func (t *Transaction) SignTransaction(signature string) {
+	t.Signature = signature
+}
+
+// VerifyTransactionSignature verifies the signature of the transaction.
+func VerifyTransactionSignature(publicKey, signature, hash string) (bool, error) {
+	// Reuse the VerifySignature function from wallet.go
+	return VerifySignature(publicKey, signature, hash)
 }
