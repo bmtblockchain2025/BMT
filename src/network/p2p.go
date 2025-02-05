@@ -12,6 +12,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"blockchain"
 )
 
 // Peer represents a peer in the P2P network.
@@ -37,10 +39,11 @@ type P2PNetwork struct {
 	workerPool    chan struct{}
 	maxPeers      int
 	blacklist     map[string]struct{} // Blacklisted peers
+	Blockchain    *blockchain.Blockchain
 }
 
 // NewP2PNetwork initializes a new P2P network.
-func NewP2PNetwork(nodeID, address string, tlsConfig *tls.Config) *P2PNetwork {
+func NewP2PNetwork(nodeID, address string, tlsConfig *tls.Config, blockchain *blockchain.Blockchain) *P2PNetwork {
 	return &P2PNetwork{
 		NodeID:        nodeID,
 		Address:       address,
@@ -50,63 +53,8 @@ func NewP2PNetwork(nodeID, address string, tlsConfig *tls.Config) *P2PNetwork {
 		workerPool:    make(chan struct{}, 10), // Limit concurrent workers to 10
 		maxPeers:      50,                      // Limit maximum peers to 50
 		blacklist:     make(map[string]struct{}),
+		Blockchain:    blockchain,
 	}
-}
-
-// Start starts the P2P network and listens for incoming connections.
-func (p *P2PNetwork) Start() error {
-	listener, err := tls.Listen("tcp", p.Address, p.TLSConfig)
-	if err != nil {
-		return err
-	}
-	p.listener = listener
-	log.Printf("Node %s started P2P network at %s", p.NodeID, p.Address)
-
-	go p.acceptConnections()
-	return nil
-}
-
-// acceptConnections handles incoming connections from peers.
-func (p *P2PNetwork) acceptConnections() {
-	for {
-		conn, err := p.listener.Accept()
-		if err != nil {
-			log.Printf("Failed to accept connection: %v", err)
-			continue
-		}
-
-		go p.handleNewPeer(conn)
-	}
-}
-
-// handleNewPeer handles a new incoming peer connection.
-func (p *P2PNetwork) handleNewPeer(conn net.Conn) {
-	peerID := conn.RemoteAddr().String()
-	if _, blacklisted := p.blacklist[peerID]; blacklisted {
-		log.Printf("Rejected connection from blacklisted peer %s", peerID)
-		conn.Close()
-		return
-	}
-	if len(p.Peers) >= p.maxPeers {
-		log.Printf("Max peers reached, rejecting connection from %s", peerID)
-		conn.Close()
-		return
-	}
-
-	peer := &Peer{
-		ID:         peerID,
-		Address:    conn.RemoteAddr().String(),
-		Conn:       conn,
-		Trusted:    false, // Default to untrusted
-		LastActive: time.Now(),
-	}
-
-	p.mutex.Lock()
-	p.Peers[peerID] = peer
-	p.mutex.Unlock()
-
-	log.Printf("Node %s connected to new peer %s", p.NodeID, peerID)
-	go p.handlePeerCommunication(peer)
 }
 
 // handlePeerCommunication handles communication with a connected peer.
@@ -119,64 +67,93 @@ func (p *P2PNetwork) handlePeerCommunication(peer *Peer) {
 			p.DisconnectPeer(peer.ID)
 			return
 		}
-		message := string(buffer[:n])
-		log.Printf("Received message from peer %s: %s", peer.ID, message)
+		message := buffer[:n]
+		p.handleMessage(message)
 		peer.LastActive = time.Now()
-		// Here you can handle different types of messages (e.g., transactions, blocks)
 	}
 }
 
-// ConnectPeer connects to a new peer.
-func (p *P2PNetwork) ConnectPeer(address string) error {
-	select {
-	case p.workerPool <- struct{}{}:
-		go func() {
-			defer func() { <-p.workerPool }()
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-
-			conn, err := tls.Dial("tcp", address, p.TLSConfig)
-			if err != nil {
-				log.Printf("Failed to connect to peer %s: %v", address, err)
-				return
-			}
-
-			peer := &Peer{
-				ID:         address,
-				Address:    address,
-				Conn:       conn,
-				Trusted:    false,
-				LastActive: time.Now(),
-			}
-
-			p.mutex.Lock()
-			p.Peers[address] = peer
-			p.mutex.Unlock()
-
-			log.Printf("Node %s connected to peer %s", p.NodeID, address)
-			p.measureLatency(peer)
-			go p.handlePeerCommunication(peer)
-		}()
-	default:
-		log.Printf("Worker pool is full, dropping connection request to %s", address)
-	}
-	return nil
-}
-
-// DisconnectPeer disconnects from a peer.
-func (p *P2PNetwork) DisconnectPeer(peerID string) {
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-
-	peer, exists := p.Peers[peerID]
-	if !exists {
-		log.Printf("Peer %s not found", peerID)
+// handleMessage handles incoming messages from peers.
+func (p *P2PNetwork) handleMessage(message []byte) {
+	var msg map[string]interface{}
+	err := json.Unmarshal(message, &msg)
+	if err != nil {
+		log.Printf("Failed to unmarshal message: %v", err)
 		return
 	}
 
-	peer.Conn.Close()
-	delete(p.Peers, peerID)
-	log.Printf("Node %s disconnected from peer %s", p.NodeID, peerID)
+	msgType, ok := msg["type"].(string)
+	if !ok {
+		log.Printf("Invalid message format")
+		return
+	}
+
+	switch msgType {
+	case "transaction":
+		p.handleTransactionMessage(message)
+	case "block":
+		p.handleBlockMessage(message)
+	default:
+		log.Printf("Unknown message type: %s", msgType)
+	}
+}
+
+// handleTransactionMessage handles an incoming transaction message.
+func (p *P2PNetwork) handleTransactionMessage(txData []byte) {
+	var tx blockchain.Transaction
+	err := json.Unmarshal(txData, &tx)
+	if err != nil {
+		log.Printf("Failed to unmarshal transaction: %v", err)
+		return
+	}
+
+	err = p.Blockchain.AddTransaction(&tx, p.NodeID)
+	if err != nil {
+		log.Printf("Failed to add transaction from peer: %v", err)
+		return
+	}
+
+	log.Printf("Successfully added transaction from peer")
+	p.BroadcastMessage(string(txData))
+}
+
+// handleBlockMessage handles an incoming block message.
+func (p *P2PNetwork) handleBlockMessage(blockData []byte) {
+	var block blockchain.MainBlock
+	err := json.Unmarshal(blockData, &block)
+	if err != nil {
+		log.Printf("Failed to unmarshal block: %v", err)
+		return
+	}
+
+	err = p.Blockchain.AddBlock(&block, p.NodeID)
+	if err != nil {
+		log.Printf("Failed to add block from peer: %v", err)
+		return
+	}
+
+	log.Printf("Successfully added block from peer")
+	p.BroadcastMessage(string(blockData))
+}
+
+// BroadcastTransaction broadcasts a transaction to all connected peers.
+func (p *P2PNetwork) BroadcastTransaction(tx *blockchain.Transaction) {
+	txData, err := json.Marshal(tx)
+	if err != nil {
+		log.Printf("Failed to marshal transaction: %v", err)
+		return
+	}
+	p.BroadcastMessage(string(txData))
+}
+
+// BroadcastBlock broadcasts a block to all connected peers.
+func (p *P2PNetwork) BroadcastBlock(block *blockchain.MainBlock) {
+	blockData, err := json.Marshal(block)
+	if err != nil {
+		log.Printf("Failed to marshal block: %v", err)
+		return
+	}
+	p.BroadcastMessage(string(blockData))
 }
 
 // BroadcastMessage broadcasts a compressed message to all connected peers.
@@ -209,55 +186,4 @@ func (p *P2PNetwork) BroadcastMessage(message string) {
 func (p *P2PNetwork) blacklistPeer(peerID string) {
 	p.blacklist[peerID] = struct{}{}
 	p.DisconnectPeer(peerID)
-}
-
-// compressData compresses data using gzip.
-func compressData(data []byte) ([]byte, error) {
-	var buf []byte
-	writer := gzip.NewWriter(&buf)
-	_, err := writer.Write(data)
-	if err != nil {
-		return nil, err
-	}
-	writer.Close()
-	return buf, nil
-}
-
-// DiscoverPeers listens for discovered peers and attempts to connect to them.
-func (p *P2PNetwork) DiscoverPeers() {
-	go func() {
-		for peer := range p.discoveryChan {
-			if err := p.ConnectPeer(peer.Address); err != nil {
-				log.Printf("Failed to connect to discovered peer %s: %v", peer.Address, err)
-			}
-		}
-	}()
-}
-
-// AddDiscoveredPeer adds a discovered peer to the discovery channel.
-func (p *P2PNetwork) AddDiscoveredPeer(peer *Peer) {
-	select {
-	case p.discoveryChan <- peer:
-		log.Printf("Discovered new peer: %s", peer.Address)
-	default:
-		log.Printf("Discovery channel full, dropping peer: %s", peer.Address)
-	}
-}
-
-// measureLatency measures the latency to a peer.
-func (p *P2PNetwork) measureLatency(peer *Peer) {
-	start := time.Now()
-	_, err := peer.Conn.Write([]byte("ping"))
-	if err != nil {
-		log.Printf("Failed to measure latency to peer %s: %v", peer.ID, err)
-		return
-	}
-	peer.Latency = time.Since(start)
-	log.Printf("Latency to peer %s: %v", peer.ID, peer.Latency)
-}
-
-// Stop stops the P2P network.
-func (p *P2PNetwork) Stop() {
-	p.listener.Close()
-	log.Printf("Node %s stopped P2P network", p.NodeID)
 }
