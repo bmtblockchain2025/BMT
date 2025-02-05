@@ -1,0 +1,9 @@
+github.com/dgraph-io/badger/v3 v3.2103.2 h1:EH/Oqz2uWobf+j9f5ZTaaY8H7tOqWJZpaKFWID/khU4=
+github.com/dgraph-io/badger/v3 v3.2103.2/go.mod h1:UnkxKHjF7evy7AVXaFANmCrN5XkhB+VHt8BLZWexPWo=
+github.com/gorilla/mux v1.8.0 h1:XkDHHQxogkxS4fLmDAyN8FMSvT2PtqpZRurj2iKJNig=
+github.com/gorilla/mux v1.8.0/go.mod h1:ldwOglUuznxKmjZGqz1wK2O+Jlvo5P3h/FcI/hEYeqc=
+github.com/lib/pq v1.10.0 h1:gJ7oYyNi0lAGaTm2JSz+od45vqfEbvx58q+6luTkVEk=
+github.com/lib/pq v1.10.0/go.mod h1:qH7MK3QxTfgsJxKFr8D2RtGzUeHJv1jvgdWmsoQnGpk=
+github.com/sirupsen/logrus v1.9.0 h1:WKUqHZ5SCiGH+zBph+nC+q5hwbXgg3dWBLew0XBzx7s=
+github.com/sirupsen/logrus v1.9.0/go.mod h1:abue9hgPoJ07seBBxP6nAZLXaVddV/1FESx+EVLgL2o=
+
