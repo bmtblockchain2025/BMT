@@ -26,7 +26,7 @@ type Config struct {
 
 // DefaultConfig provides default configuration values.
 var DefaultConfig = Config{
-	NodeID:         "bmt-node-1",
+	NodeID:         "src/bmt-node-1",
 	APIPort:        "8080",
 	P2PAddress:     "0.0.0.0:9000",
 	MaxBlockSize:   10,    // Max block size in MB
@@ -39,12 +39,12 @@ var DefaultConfig = Config{
 	TransactionFee: 0.01,  // Transaction fee in BMT
 	StakingReward:  2.0,   // Reward per block
 	MinStakeAmount: 50.0,  // Minimum stake required to be a validator
-	DatabasePath:   "data/bmt_blockchain.db",
+	DatabasePath:   "src/data/bmt_blockchain.db",
 }
 
 // LoadConfig loads the configuration from a JSON file or returns default values.
 func LoadConfig() Config {
-	file, err := os.Open("config.json")
+	file, err := os.Open("src/config.json")
 	if err != nil {
 		log.Println("Config file not found, using default settings.")
 		return DefaultConfig

@@ -1,10 +1,10 @@
 package main
 
 import (
-	"BMT-Blockchain/src/blockchain"
-	"BMT-Blockchain/src/network"
-	"BMT-Blockchain/src/api"
-	"BMT-Blockchain/src/config"
+	"src/blockchain"
+	"src/network"
+	"src/api"
+	"src/config"
 	"log"
 	"sync"
 )
@@ -28,14 +28,14 @@ func main() {
 	// Start P2P Network
 	go func() {
 		defer wg.Done()
-		log.Println("Starting P2P Network...")
+		log.Println("Starting P2P Network on", cfg.P2PAddress)
 		p2pNetwork.Start()
 	}()
 
 	// Start API Server
 	go func() {
 		defer wg.Done()
-		log.Println("Starting API Server...")
+		log.Println("Starting API Server on port", cfg.APIPort)
 		apiServer.StartAPI(cfg.APIPort)
 	}()
 
