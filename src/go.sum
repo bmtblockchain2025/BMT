@@ -6,4 +6,3 @@ github.com/lib/pq v1.10.0 h1:gJ7oYyNi0lAGaTm2JSz+od45vqfEbvx58q+6luTkVEk=
 github.com/lib/pq v1.10.0/go.mod h1:qH7MK3QxTfgsJxKFr8D2RtGzUeHJv1jvgdWmsoQnGpk=
 github.com/sirupsen/logrus v1.9.0 h1:WKUqHZ5SCiGH+zBph+nC+q5hwbXgg3dWBLew0XBzx7s=
 github.com/sirupsen/logrus v1.9.0/go.mod h1:abue9hgPoJ07seBBxP6nAZLXaVddV/1FESx+EVLgL2o=
-
