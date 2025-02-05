@@ -4,130 +4,97 @@ import (
 	"BMT-Blockchain/src/blockchain"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"sync"
+	"time"
+)
+
+const (
+	apiKey = "secure-api-key"
+	rateLimit = 5
 )
 
 type API struct {
-	Bridge *blockchain.CrossChainBridge
-	Oracle *blockchain.OracleSystem
+	Bridge       *blockchain.CrossChainBridge
+	Oracle       *blockchain.OracleSystem
+	Blockchain   *blockchain.Blockchain
+	RequestCount map[string]int
+	mutex        sync.Mutex
 }
 
-func NewAPI(bridge *blockchain.CrossChainBridge, oracle *blockchain.OracleSystem) *API {
+func NewAPI(bridge *blockchain.CrossChainBridge, oracle *blockchain.OracleSystem, blockchain *blockchain.Blockchain) *API {
 	return &API{
-		Bridge: bridge,
-		Oracle: oracle,
+		Bridge:       bridge,
+		Oracle:       oracle,
+		Blockchain:   blockchain,
+		RequestCount: make(map[string]int),
 	}
 }
 
-// StartAPI starts the RESTful API server
-func (api *API) StartAPI(port string) {
-	http.HandleFunc("/lock-tokens", api.LockTokensHandler)
-	http.HandleFunc("/mint-tokens", api.MintTokensHandler)
-	http.HandleFunc("/unlock-tokens", api.UnlockTokensHandler)
-	http.HandleFunc("/verify-transaction", api.VerifyTransactionHandler)
+func (api *API) authenticate(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-API-KEY") != apiKey {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next(w, r)
+	}
+}
 
-	fmt.Printf("API Server running on port %s\n", port)
+func (api *API) StartAPI(port string) {
+	http.HandleFunc("/get-transactions", api.authenticate(api.GetTransactionsHandler))
+	http.HandleFunc("/get-latest-blocks", api.authenticate(api.GetLatestBlocksHandler))
+	http.HandleFunc("/node-status", api.authenticate(api.NodeStatusHandler))
+	http.HandleFunc("/get-peers", api.authenticate(api.GetPeersHandler))
+	http.HandleFunc("/get-block-transactions", api.authenticate(api.GetBlockTransactionsHandler))
+
+	log.Printf("API Server running on port %s", port)
 	http.ListenAndServe(":"+port, nil)
 }
 
-// LockTokensHandler locks tokens on the source chain
-func (api *API) LockTokensHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+func (api *API) GetTransactionsHandler(w http.ResponseWriter, r *http.Request) {
+	address := r.URL.Query().Get("address")
+	if address == "" {
+		http.Error(w, "Missing address parameter", http.StatusBadRequest)
 		return
 	}
-
-	var request struct {
-		Address string  `json:"address"`
-		Amount  float64 `json:"amount"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	err := api.Bridge.LockTokens(request.Address, request.Amount)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Error: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"message": "Tokens locked successfully"})
+	transactions := api.Blockchain.GetTransactionsByAddress(address)
+	json.NewEncoder(w).Encode(transactions)
 }
 
-// MintTokensHandler mints tokens on the destination chain
-func (api *API) MintTokensHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var request struct {
-		Address string  `json:"address"`
-		Amount  float64 `json:"amount"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	err := api.Bridge.MintTokens(request.Address, request.Amount)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Error: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"message": "Tokens minted successfully"})
+func (api *API) GetLatestBlocksHandler(w http.ResponseWriter, r *http.Request) {
+	latestBlocks := api.Blockchain.GetLatestBlocks(10)
+	json.NewEncoder(w).Encode(latestBlocks)
 }
 
-// UnlockTokensHandler unlocks tokens on the source chain
-func (api *API) UnlockTokensHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
-		return
+func (api *API) NodeStatusHandler(w http.ResponseWriter, r *http.Request) {
+	status := map[string]interface{}{
+		"latestBlock": api.Blockchain.GetLatestBlock().Index,
+		"pendingTransactions": len(api.Blockchain.PendingTransactions),
+		"connectedPeers": len(api.Blockchain.P2PNetwork.Peers),
 	}
-
-	var request struct {
-		Address string  `json:"address"`
-		Amount  float64 `json:"amount"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	err := api.Bridge.UnlockTokens(request.Address, request.Amount)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Error: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"message": "Tokens unlocked successfully"})
+	json.NewEncoder(w).Encode(status)
 }
 
-// VerifyTransactionHandler verifies a cross-chain transaction
-func (api *API) VerifyTransactionHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+func (api *API) GetPeersHandler(w http.ResponseWriter, r *http.Request) {
+	peers := []string{}
+	for peerID := range api.Blockchain.P2PNetwork.Peers {
+		peers = append(peers, peerID)
+	}
+	json.NewEncoder(w).Encode(peers)
+}
+
+func (api *API) GetBlockTransactionsHandler(w http.ResponseWriter, r *http.Request) {
+	blockIndex := r.URL.Query().Get("index")
+	if blockIndex == "" {
+		http.Error(w, "Missing index parameter", http.StatusBadRequest)
 		return
 	}
-
-	txID := r.URL.Query().Get("txID")
-	blockchain := r.URL.Query().Get("blockchain")
-
-	if txID == "" || blockchain == "" {
-		http.Error(w, "Missing txID or blockchain parameter", http.StatusBadRequest)
+	block := api.Blockchain.GetBlockByIndex(blockIndex)
+	if block == nil {
+		http.Error(w, "Block not found", http.StatusNotFound)
 		return
 	}
-
-	valid, err := api.Oracle.ValidateTransaction(txID)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Error: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	json.NewEncoder(w).Encode(map[string]bool{"valid": valid})
+	json.NewEncoder(w).Encode(block.Transactions)
 }
